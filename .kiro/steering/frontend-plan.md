@@ -1,47 +1,57 @@
-# NovelBridge — Frontend Plan (next work)
+# NovelBridge — Frontend Plan
 
-The backend is complete and verified. The frontend is spec tasks 6-9 in
-`.kiro/specs/novelbridge/tasks.md`. Build it in that order, pausing after the scaffold+shell.
+The initial frontend (spec tasks 6-9) is **built and committed**. This doc now tracks the
+settled stack decisions and the post-testing backlog.
 
-## Decisions (settled)
+## Stack decisions (settled, do not re-litigate)
 
-- **Vite + React + TypeScript + Tailwind + shadcn/ui.** shadcn is officially supported on Vite;
-  use its CLI (`npx shadcn@latest init`) and the `@` path alias. Keep styling to Tailwind +
-  shadcn only — no additional heavy UI library.
-- **Layout**: a sidebar listing projects (create / select / delete-with-confirm) + a main area
+- **Vite + React + TypeScript + Tailwind v4 + shadcn/ui**, initialized via the shadcn CLI
+  (`npx shadcn@latest init`) with the **radix base + "Nova" preset**, neutral base color, and
+  the `@` path alias. Tailwind v4 via `@tailwindcss/vite`. Keep styling to Tailwind + shadcn
+  only — no additional heavy UI library.
+- **Layout**: sidebar listing projects (create / select / delete-with-confirm) + a main area
   with tabs: **References**, **Glossary**, **Translate**.
-- **Translate view**: raw input and translated output shown as **separate panes** so each reads
-  on its own. Output streams tokens live via the SSE endpoint.
-- Vite dev server on `:5173`, dev-proxy `/api` -> `http://127.0.0.1:8000` (matches backend CORS).
+- **Translate view**: raw input and translated output as **separate panes**; output streams
+  tokens live via the SSE endpoint. A **History panel** lists auto-saved translations and loads
+  one read-only into the panes.
+- Vite dev server on `:5173`, dev-proxy `/api` -> `http://127.0.0.1:8000`.
 
-## Build order (tasks 6-9)
+## Preset conventions (this shadcn setup is non-standard — follow these)
 
-1. **Task 6 — scaffold**: Vite React+TS app in `frontend/`, Tailwind + shadcn init, `@` alias,
-   dev proxy. Add a typed API client (`src/api/`) and an **SSE consumer** utility that parses
-   `text/event-stream` into an async iterator of events. PAUSE HERE for the author to confirm it runs.
-2. **Task 7 — shell**: sidebar (projects CRUD, confirm on delete) + tabbed main area + empty states.
-3. **Task 8 — References & Glossary tabs**: paste title+content to add references (list/view/delete,
-   empty validation); add/edit/delete glossary entries (source_term + translation + optional note;
-   duplicate source_term upserts).
-4. **Task 9 — Translate workspace**: source-language selector (zh/ja); submit raw text to the SSE
-   endpoint; render tokens live; in-progress indicator; **preserve raw text on error**; show saved
-   state; surface "no context available" when the project has no references.
+- `cn` is imported from the bare `"cn"` package (re-exported via `@/lib/utils`); primitives
+  import from the unified `"radix-ui"` package (e.g. `import { Dialog } from "radix-ui"`).
+- `Button` sizes: `xs | sm | default | lg | icon | icon-xs | icon-sm`; icon placement via
+  `data-icon="inline-start"`. `Select` trigger takes `size="sm"`.
+- Theme tokens live in `src/index.css` (`:root` + `.dark` already fully defined). One accent:
+  `--accent-brand` (amber). A `prefers-reduced-motion` guard is already in place.
+- `src/components/ui/sonner.tsx` was de-coupled from `next-themes` (this is a Vite app, not
+  Next) — do not reintroduce `next-themes`.
 
-## SSE consumer notes
+## What exists
 
-The browser-native `EventSource` only does GET. The translate endpoint is a POST with a JSON body,
-so use `fetch()` with a streaming reader (`response.body.getReader()`) and parse `data: {...}` lines
-manually. Handle three event shapes: `{content}`, `{info}`, `{done, translation_id}`, `{error}`.
+- `src/api/` — typed client (`client.ts`), types (`types.ts`), and a fetch-based SSE consumer
+  (`sse.ts`) that parses `text/event-stream` into an async iterator (EventSource can't POST a
+  body). Handles `{content}`, `{info}`, `{done, translation_id}`, `{error}` events.
+- `src/components/` — `project-sidebar`, `project-workspace` (tabs + counts), `references-tab`,
+  `glossary-tab`, `translate-tab`, `history-panel`, `confirm-dialog` (reusable), `empty-state`.
 
-## API contract
+## Backlog (post-testing; see `tech.md` and `tasks.md`)
 
-See `tech.md` for the full endpoint list and the exact SSE event shapes. Do not change backend
-endpoints from the frontend; if a contract change is needed, update the backend + `tech.md` together.
+1. **Dark mode (keep simple)**: `.dark` tokens already exist — add a toggle on `<html>` with
+   localStorage + `prefers-color-scheme` on first load, wire the toaster theme to it, small
+   unobtrusive toggle (sidebar footer). No theme-settings panel. Avoid a flash of wrong theme.
+2. **Delete saved translations (UI)**: per-row trash in `history-panel.tsx` guarded by
+   `ConfirmDialog`, calling `DELETE /api/translations/{tid}`. Depends on that backend endpoint
+   shipping first; reset the panes if the loaded translation is deleted; refresh the count.
+3. **Scroll-follow fix**: in `translate-tab.tsx`, only autoscroll the output pane when the user
+   is pinned near the bottom, so they can scroll up mid-stream. Optional "jump to latest"
+   affordance; respect reduced-motion.
+4. **Model-status indicator**: poll `GET /api/health` ({status, engine, model}) lightly; show
+   engine + model + a reachable dot; make `engine=="mock"` obvious. Groundwork before any model
+   picker. **The model picker itself is a backend-first TODO — don't build it yet.**
 
-## Starter prompt for a fresh frontend session
+## Working rules
 
-> Build the NovelBridge frontend (spec tasks 6-9 in `.kiro/specs/novelbridge/tasks.md`).
-> The backend is done and running on `:8000`. Follow the steering docs. Start with task 6
-> (Vite + React + TS + Tailwind + shadcn scaffold, dev proxy, typed API client, SSE consumer),
-> then STOP so I can confirm it runs before you build the shell and tabs. Keep the token
-> budget tight and flag major decisions.
+Flag major decisions for confirmation even in autopilot. `npm run build` (tsc + vite) must be
+clean. No new deps beyond Tailwind/shadcn. One local commit per task; no git remote without
+asking.

@@ -62,7 +62,7 @@ The following were confirmed against the live environment during design:
 ### Monorepo layout
 
 ```
-kiro-challenge/
+novel-bridge/
   backend/
     app/
       main.py                # FastAPI app factory, CORS, router registration

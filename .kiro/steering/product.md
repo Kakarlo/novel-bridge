@@ -9,9 +9,7 @@ official English translations of novels often get dropped partway through a seri
 
 ## Status & scope
 
-- This is a **proof of concept** for learning and portfolio use. The author is based in the
-  Philippines and is **not eligible** for Kiro University Challenge credits, so do NOT optimize
-  for that challenge's rubric. The north star is a clean, working, demoable app.
+- This is a **proof of concept** for learning and portfolio use. The north star is a clean, working, demoable app.
 - The full spec lives in `.kiro/specs/novelbridge/` (requirements.md, design.md, tasks.md).
   Treat those as the source of truth; this steering file is a quick-orientation summary.
 
@@ -23,7 +21,11 @@ official English translations of novels often get dropped partway through a seri
   Typechecks and builds clean; verified end-to-end through the dev proxy against the mock engine.
 - **Final verification + README: COMPLETE** (spec task 10). 24 backend tests pass; one live
   translation verified against Ollama `qwen3.5:0.8b` (real streaming + glossary + auto-save);
-  top-level README added. All 10 spec tasks are now done.
+  top-level README added. All 10 original spec tasks are done.
+- **Post-PoC testing surfaced a backlog** (spec tasks 11+ in `tasks.md`): concurrency cap,
+  delete-translation endpoint + UI, a reference-echo prompting bug, references→summary+candidate
+  glossary, English-first glossary matching, dark mode, scroll-follow fix, and a model-status
+  indicator (model picker deferred). See `tech.md` "Planned work & known issues".
 - Git: local only, no remote yet. One commit per spec task on `main`.
 
 ## Hard constraints & decisions (do not silently change)
@@ -32,8 +34,13 @@ official English translations of novels often get dropped partway through a seri
 - **Local-first, AWS-ready**: must run fully locally with no AWS dependency. Keep storage behind
   the `StorageService` interface (SQLite now, DynamoDB later) and the engine behind the
   `TranslationEngine` interface (Ollama now, Gemini/Bedrock later). All env-specific values in config.
-- **References are pasted text only. No scraping.**
-- **Glossary is manual.** Auto-suggest/extraction is an explicit stretch goal, not in the PoC.
+- **References are pasted text only. No scraping.** Evolving use: a reference is a source for a
+  short summary + candidate glossary terms, not raw text to dump into the prompt (the raw dump
+  causes the model to echo the reference — see the prompting bug in `tech.md`).
+- **Glossary is for validation, not bulk data entry** (author's intent). Users often know the
+  English name, not the source term, so English-first matching is the direction (store English
+  surface forms, match against output). Manual entry stays supported; auto-suggestion from
+  reference summaries is now an active direction rather than a far-off stretch goal.
 - **Source languages: Chinese (zh) and Japanese (ja) only**, translating to English.
 - **Translations auto-save** on stream completion.
 

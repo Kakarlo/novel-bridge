@@ -18,8 +18,10 @@ official English translations of novels often get dropped partway through a seri
 ## Current state (keep this updated)
 
 - **Backend: COMPLETE** (spec tasks 1-5), 24 tests passing, verified against live Ollama.
-- **Frontend: NOT STARTED** (spec tasks 6-9). Next work item.
-- **Final verification + README: pending** (spec task 10).
+- **Frontend: COMPLETE** (spec tasks 6-9). Vite + React + TS + Tailwind v4 + shadcn/ui
+  (radix base, Nova preset). Sidebar + References/Glossary/Translate tabs + live SSE translate.
+  Typechecks and builds clean; verified end-to-end through the dev proxy against the mock engine.
+- **Final verification + README: pending** (spec task 10): live Ollama run + top-level README.
 - Git: local only, no remote yet. One commit per spec task on `main`.
 
 ## Hard constraints & decisions (do not silently change)

@@ -1,0 +1,257 @@
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { AlertTriangle, CheckCircle2, Info, Languages, Loader2, Sparkles, Square } from "lucide-react";
+
+import { api } from "@/api/client";
+import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang } from "@/api/types";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { langLabel } from "@/lib/format";
+
+type Status = "idle" | "streaming" | "done" | "error";
+
+interface TranslateTabProps {
+  projectId: string;
+  defaultLang: SourceLang;
+  hasReferences: boolean;
+  onSaved?: () => void;
+}
+
+export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }: TranslateTabProps) {
+  const [raw, setRaw] = useState("");
+  const [output, setOutput] = useState("");
+  const [lang, setLang] = useState<SourceLang>(defaultLang);
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const outputScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset the workspace when switching projects, but keep the raw input
+  // tied to the project the user is on.
+  useEffect(() => {
+    abortRef.current?.abort();
+    setRaw("");
+    setOutput("");
+    setStatus("idle");
+    setErrorMsg(null);
+    setInfoMsg(null);
+    setLang(defaultLang);
+  }, [projectId, defaultLang]);
+
+  // Autoscroll the output pane as tokens arrive.
+  useEffect(() => {
+    const el = outputScrollRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [output]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const streaming = status === "streaming";
+  const canTranslate = raw.trim().length > 0 && !streaming;
+
+  async function translate() {
+    if (!canTranslate) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setStatus("streaming");
+    setOutput("");
+    setErrorMsg(null);
+    setInfoMsg(null);
+
+    try {
+      const stream = api.translateStream(projectId, { raw_text: raw, source_lang: lang }, controller.signal);
+      for await (const event of stream) {
+        if (isContentEvent(event)) {
+          setOutput((prev) => prev + event.content);
+        } else if (isInfoEvent(event)) {
+          setInfoMsg(event.info);
+        } else if (isErrorEvent(event)) {
+          // Engine failed mid-stream. Keep raw + whatever streamed so far.
+          setStatus("error");
+          setErrorMsg(event.error);
+          toast.error("Translation failed");
+          return;
+        } else if (isDoneEvent(event)) {
+          setStatus("done");
+          onSaved?.();
+          toast.success("Translation saved");
+          return;
+        }
+      }
+      // Stream ended without an explicit done/error frame.
+      if (!controller.signal.aborted) {
+        setStatus((s) => (s === "streaming" ? "done" : s));
+      }
+    } catch (e) {
+      if (controller.signal.aborted) return; // user stopped; not an error
+      setStatus("error");
+      setErrorMsg(e instanceof Error ? e.message : "Could not reach the translator");
+      toast.error("Translation failed");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+    setStatus(output ? "done" : "idle");
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3.5">
+        <div className="flex items-center gap-3">
+          <h2 className="font-heading text-xl font-semibold tracking-tight">Translate</h2>
+          <StatusPill status={status} />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Languages className="size-4 text-muted-foreground" />
+            <Select value={lang} onValueChange={(v) => setLang(v as SourceLang)} disabled={streaming}>
+              <SelectTrigger size="sm" className="w-[7.5rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zh">Chinese</SelectItem>
+                <SelectItem value="ja">Japanese</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {streaming ? (
+            <Button variant="outline" onClick={stop} data-icon="inline-start">
+              <Square className="fill-current" />
+              Stop
+            </Button>
+          ) : (
+            <Button onClick={translate} disabled={!canTranslate} data-icon="inline-start">
+              <Sparkles />
+              Translate
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Context notice */}
+      {!hasReferences && (
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-6 py-2 text-xs text-muted-foreground">
+          <Info className="size-3.5" />
+          No reference chapters yet — translating without continuity context. Add references to improve consistency.
+        </div>
+      )}
+      {infoMsg && (
+        <div className="flex items-center gap-2 border-b bg-accent-brand/10 px-6 py-2 text-xs text-foreground">
+          <AlertTriangle className="size-3.5 text-accent-brand" />
+          {infoMsg}
+        </div>
+      )}
+
+      {/* Error banner — raw text stays intact below */}
+      {status === "error" && errorMsg && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-6 py-2.5 text-sm text-destructive"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <span className="font-medium">{errorMsg}</span>
+            <span className="text-destructive/80"> Your source text is preserved — adjust and try again.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Two asymmetric panes */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        {/* Source pane */}
+        <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
+          <PaneHeader label={`Source · ${langLabel(lang)}`} meta={`${raw.length.toLocaleString()} chars`} />
+          <Textarea
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            placeholder={lang === "zh" ? "粘贴原文章节…" : "原文の章をここに貼り付け…"}
+            spellCheck={false}
+            className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-serif text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
+          />
+        </section>
+
+        {/* Output pane */}
+        <section className="flex min-h-0 flex-col bg-muted/20">
+          <PaneHeader label="English" meta={outputMeta(status, output)} />
+          <ScrollArea ref={outputScrollRef} className="min-h-0 flex-1">
+            {output ? (
+              <div className="px-6 py-5 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
+                {output}
+                {streaming && (
+                  <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse bg-accent-brand align-middle" />
+                )}
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center text-sm text-muted-foreground">
+                {streaming ? (
+                  <>
+                    <Loader2 className="size-5 animate-spin text-accent-brand" />
+                    <p className="mt-3">Translating…</p>
+                  </>
+                ) : (
+                  <>
+                    <Languages className="size-5" />
+                    <p className="mt-3 max-w-xs">The translation will stream in here, line by line.</p>
+                  </>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function PaneHeader({ label, meta }: { label: string; meta?: string }) {
+  return (
+    <div className="flex items-center justify-between border-b px-6 py-2.5">
+      <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">{label}</span>
+      {meta && <span className="text-[11px] text-muted-foreground/80">{meta}</span>}
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: Status }) {
+  if (status === "streaming") {
+    return (
+      <Badge variant="secondary" className="gap-1 bg-accent-brand/15 text-accent-brand-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Streaming
+      </Badge>
+    );
+  }
+  if (status === "done") {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <CheckCircle2 className="size-3 text-accent-brand" />
+        Saved
+      </Badge>
+    );
+  }
+  if (status === "error") {
+    return (
+      <Badge variant="secondary" className="gap-1 bg-destructive/10 text-destructive">
+        <AlertTriangle className="size-3" />
+        Failed
+      </Badge>
+    );
+  }
+  return null;
+}
+
+function outputMeta(status: Status, output: string): string | undefined {
+  if (!output) return undefined;
+  const chars = `${output.length.toLocaleString()} chars`;
+  if (status === "done") return `${chars} · saved`;
+  return chars;
+}

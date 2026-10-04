@@ -1,0 +1,1 @@
+"""NovelBridge backend application package."""

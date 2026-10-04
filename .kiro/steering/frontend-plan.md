@@ -35,20 +35,45 @@ settled stack decisions and the post-testing backlog.
 - `src/components/` — `project-sidebar`, `project-workspace` (tabs + counts), `references-tab`,
   `glossary-tab`, `translate-tab`, `history-panel`, `confirm-dialog` (reusable), `empty-state`.
 
-## Backlog (post-testing; see `tech.md` and `tasks.md`)
+## North star (reading quality + ease of use)
 
-1. **Dark mode (keep simple)**: `.dark` tokens already exist — add a toggle on `<html>` with
-   localStorage + `prefers-color-scheme` on first load, wire the toaster theme to it, small
-   unobtrusive toggle (sidebar footer). No theme-settings panel. Avoid a flash of wrong theme.
-2. **Delete saved translations (UI)**: per-row trash in `history-panel.tsx` guarded by
-   `ConfirmDialog`, calling `DELETE /api/translations/{tid}`. Depends on that backend endpoint
-   shipping first; reset the panes if the loaded translation is deleted; refresh the count.
-3. **Scroll-follow fix**: in `translate-tab.tsx`, only autoscroll the output pane when the user
-   is pinned near the bottom, so they can scroll up mid-stream. Optional "jump to latest"
-   affordance; respect reduced-motion.
-4. **Model-status indicator**: poll `GET /api/health` ({status, engine, model}) lightly; show
-   engine + model + a reachable dot; make `engine=="mock"` obvious. Groundwork before any model
-   picker. **The model picker itself is a backend-first TODO — don't build it yet.**
+The pain point is that reading a long series via raw LLM translation breaks immersion — names
+drift, tone wobbles. The frontend's job is a **smooth reading harness**. Current focus is ease
+of use and reading quality, not infrastructure. Future tracks (do not build yet): a
+bring-your-own LLM API-token flow, and accounts/cloud only if adoption warrants it. See
+`product.md`.
+
+## Backlog (post-testing) — shipped
+
+1. **Dark mode** — DONE. No-FOUC inline script in `index.html`, `use-theme.ts` (light/dark,
+   localStorage + `prefers-color-scheme` first-load, follows OS until explicit choice), toggle
+   in the sidebar footer, `Toaster` theme wired without `next-themes`.
+2. **Delete saved translations (UI)** — DONE. Per-row trash in `history-panel.tsx` via
+   `ConfirmDialog`; resets panes if the loaded translation is deleted; refreshes the count.
+3. **Scroll-follow fix** — DONE. Stick-to-bottom autoscroll in `translate-tab.tsx` + "jump to
+   latest"; reduced-motion respected.
+4. **Model-status indicator** — DONE. `use-health.ts` polls `GET /api/health`;
+   `model-status.tsx` in the sidebar footer shows engine + model + a reachable dot (green /
+   amber for LLM-down / red for backend-down) and flags `engine=="mock"`. The backend health
+   probe is now real (`reachable`). Model picker still a backend-first TODO — don't build it.
+5. **Reference derived-context UI** — DONE. References reader shows summary + candidate-term
+   chips with a "Re-summarize" action; chips promote into the glossary.
+
+## Next major frontend work — English-first glossary with in-context approval (spec task 14)
+
+References are English, so candidate terms are English surface forms. The user adds a name by
+its English form alone and **approves/rejects** it when it appears in a translation. Frontend
+surface:
+
+- **Glossary tab:** "Add name (English only)", status badges (`candidate|approved|rejected`),
+  approve/reject controls, status filter. Keep the classic paired-entry editor working.
+- **Translate tab:** after a translation completes, a **term-review panel** lists matched terms
+  with Approve / Reject, and occurrences are highlighted in the output pane.
+- **History:** viewing a saved translation re-runs matching (via a matches endpoint) for
+  retrospective review.
+
+Phased with the backend (see `tasks.md` 14.1–14.7) so the HTTP contract changes once. Flag the
+open design decisions before building.
 
 ## Working rules
 

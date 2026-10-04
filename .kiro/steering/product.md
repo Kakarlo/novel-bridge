@@ -4,12 +4,32 @@
 
 NovelBridge is a local-first web app that translates raw Chinese/Japanese web-novel
 chapters into English, using previously translated chapters (pasted as reference) plus a
-manual glossary so names, terminology, tone, and flow stay consistent. It exists because
-official English translations of novels often get dropped partway through a series.
+glossary so names, terminology, tone, and flow stay consistent. It exists because official
+English translations of novels often get dropped partway through a series.
+
+## North star & direction
+
+The real pain point this solves: **reading a long series via raw LLM translation is an awful
+experience.** Pasting chapters straight into an LLM sometimes works, but most of the time names
+and terms drift and the tone wobbles, so immersion is gone. NovelBridge is a **harness that
+makes a whole series read smoothly** — consistent names/terminology, reusable context, and a
+clean reading UI — with minimal babysitting of the model.
+
+Where this is heading (do not build ahead of these, but don't block them either):
+
+- **Bring-your-own LLM API token.** Beyond local Ollama, let a user plug in an API key for a
+  hosted model so translation "just works" without running anything locally. Engine stays
+  behind the `TranslationEngine` interface so adding a hosted-API engine is additive.
+- **Local-first now, accounts + cloud later.** Everything runs locally today (SQLite, local
+  storage). _If_ adoption happens, accounts + cloud-stored projects become worthwhile. Keep
+  storage behind `StorageService` so that swap is cheap. **Do not build accounts/cloud now.**
+- **Current focus: ease of use and reading quality**, not infrastructure. The English-first
+  glossary (names stay consistent across the series, validated in context) is the biggest lever.
 
 ## Status & scope
 
-- This is a **proof of concept** for learning and portfolio use. The north star is a clean, working, demoable app.
+- This is a **portfolio-worthy project** (grown past the original PoC). The north star is a
+  clean, genuinely useful reading harness — not just a demo. Keep scope local for now.
 - The full spec lives in `.kiro/specs/novelbridge/` (requirements.md, design.md, tasks.md).
   Treat those as the source of truth; this steering file is a quick-orientation summary.
 
@@ -22,11 +42,18 @@ official English translations of novels often get dropped partway through a seri
 - **Final verification + README: COMPLETE** (spec task 10). 24 backend tests pass; one live
   translation verified against Ollama `qwen3.5:0.8b` (real streaming + glossary + auto-save);
   top-level README added. All 10 original spec tasks are done.
-- **Post-PoC testing surfaced a backlog** (spec tasks 11+ in `tasks.md`): concurrency cap,
-  delete-translation endpoint + UI, a reference-echo prompting bug, references→summary+candidate
-  glossary, English-first glossary matching, dark mode, scroll-follow fix, and a model-status
-  indicator (model picker deferred). See `tech.md` "Planned work & known issues".
-- Git: local only, no remote yet. One commit per spec task on `main`.
+- **Post-PoC backlog (spec tasks 11+ in `tasks.md`): mostly shipped.** Done: concurrency cap,
+  delete-translation endpoint + UI, the reference-echo prompting bug + references→summary/
+  candidate-terms, dark mode, scroll-follow fix, a model-status indicator backed by a **real
+  engine health probe** (health now pings the engine instead of echoing config), and surfacing
+  the reference summary + candidate terms in the UI (chips promotable to the glossary). Model
+  picker still deferred (backend-first). See `tech.md` "Planned work & known issues".
+- **Active major feature: English-first glossary with in-context approval.** References are
+  English, so extracted candidate terms are English surface forms; the user adds a name by its
+  English form alone and **approves/rejects** it when it appears in a translation (no hunting
+  for the source term). Approved terms steer the prompt. Plan lives in the session artifact and
+  spec task 14; implementation is phased. **Flag the open design decisions before building.**
+- Git: local only, no remote yet. One commit per task on `main`.
 
 ## Hard constraints & decisions (do not silently change)
 
@@ -37,10 +64,11 @@ official English translations of novels often get dropped partway through a seri
 - **References are pasted text only. No scraping.** Evolving use: a reference is a source for a
   short summary + candidate glossary terms, not raw text to dump into the prompt (the raw dump
   causes the model to echo the reference — see the prompting bug in `tech.md`).
-- **Glossary is for validation, not bulk data entry** (author's intent). Users often know the
-  English name, not the source term, so English-first matching is the direction (store English
-  surface forms, match against output). Manual entry stays supported; auto-suggestion from
-  reference summaries is now an active direction rather than a far-off stretch goal.
+- **Glossary is for validation, not bulk data entry** (author's intent). References are already
+  English, so the user knows the English name, not the source term. The direction is
+  **English-first**: store English surface forms, match them against model output, and let the
+  user **approve/reject each term in context** rather than entering source→target pairs. Classic
+  paired entries stay supported; candidate terms from reference summaries seed the list.
 - **Source languages: Chinese (zh) and Japanese (ja) only**, translating to English.
 - **Translations auto-save** on stream completion.
 

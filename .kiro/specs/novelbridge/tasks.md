@@ -159,42 +159,80 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
   - Contract change flagged for frontend: `ReferenceChapter` gains `summary` + `candidate_terms`;
     new resummarize route.
 
-- [ ] 14. English-first glossary matching (design discussion done; implementation pending author pick)
-  - Glossary is for validation; users often know the English name, not the source term. Store
-    English surface forms and fuzzy/alias-match against output (English↔source pairs, possibly
-    harvested from task 13 `candidate_terms`). No heavy NLP deps. Depends on task 13 (shipped).
-  - **Design options produced** (session design note). Axes + leaning recommendation:
-    - Data model: A1 add optional `english_name` / **A2 make English the key, source optional** /
-      A3 add `aliases` list for drift.
-    - Matching (stdlib only): B1 substring / **B2 normalized exact** → **B3 `difflib` fuzzy**
-      fallback with a tunable `NB_GLOSSARY_MATCH_THRESHOLD`.
-    - When: **C1 on-demand `POST /api/projects/{id}/glossary/validate`** (raw text or
-      `translation_id`) / C2 inline in translate SSE / C3 frontend-only.
-    - Reference seeding: **D1 suggest-only chips** from `candidate_terms` / D3 harvest English
-      only; avoid D2 auto-pair (small models align CN/JP↔EN poorly).
-  - **Open decisions before building:** (1) data model A1/A2/A3; (2) do English entries steer the
-    prompt or only validate after; (3) normalized-exact vs fuzzy from day one + threshold; (4)
-    on-demand vs inline; (5) seed from references now or defer. Best landed with the frontend
-    glossary-tab rework so the HTTP contract changes once.
+- [ ] 14. English-first glossary with in-context approval (MAJOR; plan done, phased build)
+  - **Why:** references are English, so the engine's `candidate_terms` are English surface forms
+    — the user knows the English name, not the source term, and shouldn't have to hunt for it.
+    The user adds a name by its **English form alone**; when it appears in a translation they
+    **approve/reject** the usage in context. Approved terms steer the prompt as preferred
+    spellings. This is the biggest lever on reading quality (names stay consistent across a
+    series). Full plan: session artifact "English-first glossary with in-context approval".
+  - **No migration:** no production data exists, so `glossary_entries` is redefined directly in
+    `schema.sql` and the dev `novelbridge.db` is deleted + recreated. No additive/backfill work.
+  - **Settled defaults (confirm before building, see artifact open questions):** one glossary
+    table redefined English-first — `surface_form` (req), `source_term` (nullable), `status`
+    (`candidate|approved|rejected`, default `candidate`), `note`, `created_at`,
+    `UNIQUE(project_id, surface_form COLLATE NOCASE)`. Occurrence detection = exact whole-word
+    case-insensitive (stdlib; fuzzy is a flagged follow-up). Review happens after a translation
+    completes and when viewing a saved one. Approved terms feed a new "preferred spellings"
+    prompt block; rejected terms optionally feed an "avoid" block.
+  - **Phases (each a commit; build + offline tests green):**
+    - 14.1 Data + storage: redefine `schema.sql`, recreate dev DB, update `models.py`/TS types,
+      add `add_term` + `set_term_status` + storage tests.
+    - 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`) + offline tests.
+    - 14.3 API: `POST /projects/{id}/glossary/english`, `PATCH /glossary/{id}/status`, matches
+      folded into the translate `done` event + `GET /translations/{tid}/matches`; API tests.
+    - 14.4 Prompt integration: approved terms → "preferred spellings" block; context-builder
+      budgeting + prompt tests. (The reading-quality payoff.)
+    - 14.5 Glossary UI: English-only add, status badges, approve/reject, status filter.
+    - 14.6 In-context review UI: translate-tab review panel + output highlighting; history
+      retro-review via the matches endpoint.
+    - 14.7 Verification: end-to-end on mock + one live pass; update README/steering.
+  - **Open decisions still to confirm:** candidate-vs-approved on add; match surfacing via the
+    `done` event vs a separate call; whether rejected terms are sent as "avoid"; Phase 0 as a
+    light note vs a full spec rewrite. Flag these for confirmation even in autopilot.
 
 - [ ] 15. Model picker (deferred; capture only)
   - `GET /api/models` proxying Ollama `/api/tags`, plus per-request model plumbing (engine
     already accepts `TranslationRequest.model`). Build after the frontend model-status indicator.
 
+- [ ] 21. Bring-your-own LLM API token (future track; capture only — do not build yet)
+  - North-star direction: let users plug in a hosted-model API key so translation works without
+    running Ollama locally. Additive new engine behind the `TranslationEngine` interface
+    (alongside Ollama/mock), key stored in local config for now. **Local-first still holds** —
+    no accounts/cloud yet; those come only if adoption warrants it, behind `StorageService`.
+    Do not design anything in task 14 that blocks this, but don't start it.
+
 ### Frontend
 
-- [ ] 16. Dark mode (keep simple; confirm scope)
-  - Toggle `dark` class on `<html>` with localStorage + `prefers-color-scheme` on first load;
-    wire the sonner toaster theme without `next-themes`; unobtrusive toggle. No flash on load.
+- [x] 16. Dark mode (keep simple; confirm scope)
+  - Shipped: no-FOUC inline script in `index.html` (applies theme before paint), `use-theme.ts`
+    hook (light/dark, localStorage + `prefers-color-scheme` first-load default, follows OS live
+    until an explicit choice), sun/moon toggle in the sidebar footer, sonner `Toaster` wired to
+    the theme without `next-themes`.
 
-- [ ] 17. Delete saved translations (UI)
-  - Per-row delete in `history-panel.tsx` via `ConfirmDialog`, calling task 12's endpoint.
-    Reset panes if the loaded translation is deleted; refresh the project count.
+- [x] 17. Delete saved translations (UI)
+  - Shipped: per-row trash in `history-panel.tsx` (hover/focus reveal) guarded by
+    `ConfirmDialog`, calling `DELETE /api/translations/{tid}`. Resets the panes if the loaded
+    translation is deleted; refreshes the project count.
 
-- [ ] 18. Fix streaming scroll-follow
-  - In `translate-tab.tsx`, only autoscroll when pinned near the bottom so users can scroll up
-    mid-stream; optional "jump to latest"; respect reduced-motion.
+- [x] 18. Fix streaming scroll-follow
+  - Shipped: stick-to-bottom autoscroll in `translate-tab.tsx` (only follows when pinned near
+    the bottom), a "jump to latest" affordance while streaming, and reduced-motion respected.
 
-- [ ] 19. Model-status indicator
-  - Poll `GET /api/health`; show engine + model + reachable dot; make `engine=="mock"` obvious.
-    Groundwork before the deferred model picker (task 15).
+- [x] 19. Model-status indicator
+  - Shipped: `use-health.ts` polls `GET /api/health` (mount + ~30s + window focus);
+    `model-status.tsx` in the sidebar footer shows engine + model + a reachable dot and flags
+    `engine=="mock"`. Paired with task 19b below (the health probe became real). Groundwork
+    before the deferred model picker (task 15).
+
+- [x] 19b. Real engine health probe (backend)
+  - `GET /api/health` previously echoed config and always reported "ok". Now it's async and
+    calls `engine.health()` (Ollama pings `/api/tags`; mock returns True), returning
+    `reachable` + `status: ok|unreachable`. The indicator shows three states: engine reachable
+    (green), backend up but LLM unreachable (amber), backend down (red).
+
+- [x] 20. Surface reference summary + candidate terms (frontend)
+  - References reader shows a "Derived context" panel (summary + candidate-term chips), a
+    "Re-summarize" action (`POST /api/references/{refId}/resummarize`), and list rows show a
+    term-count / "not summarized" badge. Candidate chips can be promoted into the glossary with
+    an English mapping. `ReferenceChapter` type gained `summary` + `candidate_terms`.

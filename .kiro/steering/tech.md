@@ -61,9 +61,12 @@ and client disconnect.
 - `GET /api/projects/{id}/translations`; `GET /api/translations/{tid}`
 - `DELETE /api/translations/{tid}` — 204 on success, 404 when missing. Backed by
   `delete_translation` on `StorageService` + the SQLite impl.
-- `GET /api/health` — returns `{status, engine, model}`. The frontend polls this for a
-  model-status indicator; surface `engine=="mock"` prominently so a leaked `NB_ENGINE=mock`
-  is obvious.
+- `GET /api/health` — returns `{status, reachable, engine, model}`. **Now probes the actual
+  engine** (`engine.health()`: Ollama pings `/api/tags`, mock returns True) rather than echoing
+  config, so a disconnected LLM server reports `reachable=false` / `status="unreachable"`. The
+  frontend polls this; the indicator shows engine-reachable (green) / backend-up-but-LLM-down
+  (amber) / backend-down (red), and surfaces `engine=="mock"` prominently so a leaked
+  `NB_ENGINE=mock` is obvious.
 - `GET /api/models` — **planned**, proxy of Ollama `GET /api/tags`, for the future model picker.
 
 ## Ollama specifics (verified)
@@ -122,14 +125,24 @@ Treat `.kiro/specs/novelbridge/tasks.md` as the live task list; these are the ag
   migration). `context_builder.build()` now budgets summaries newest-first instead of raw tails.
   Extraction runs synchronously on POST reference and on `POST /api/references/{refId}/resummarize`;
   failures degrade gracefully (reference saved with no summary; resummarize later).
-- **Glossary = validation, not entry (English-first matching):** the author's model is that the
-  glossary tab validates terms; users often know the English name, not the source term. Explore
-  storing English surface forms and fuzzy/alias-matching against model output (English↔source
-  pairs, possibly harvested from reference summaries). Design discussion first; depends on the
-  reference-summary work. No heavy NLP deps in the PoC.
-- **Model picker (deferred):** choose the Ollama model per request from a list. Backend-first
-  (`GET /api/models` proxying Ollama `/api/tags` + request plumbing); the frontend adds a
-  health/model-status indicator before any picker.
+- **English-first glossary with in-context approval (ACTIVE MAJOR FEATURE — spec task 14):**
+  references are English, so extracted candidate terms are English surface forms. The user adds
+  a name by its **English form alone**; occurrences in a translation are flagged for
+  **approve/reject**, and approved terms steer the prompt as preferred spellings. Redefine
+  `glossary_entries` English-first (`surface_form` req, `source_term` nullable, `status`
+  candidate|approved|rejected; unique on `surface_form COLLATE NOCASE`). **No migration — no
+  production data; redefine `schema.sql` and recreate the dev DB.** Occurrence matching is
+  stdlib exact whole-word, case-insensitive (fuzzy is a flagged follow-up). Phased build in
+  `tasks.md` (14.1–14.7). Flag the open design decisions before building.
+- **Model status probe (DONE):** `GET /api/health` now calls `engine.health()` and reports real
+  reachability (see the API section). The frontend indicator keys off `reachable`.
+- **Model picker (deferred):** choose the model per request from a list. Backend-first
+  (`GET /api/models` proxying Ollama `/api/tags` + request plumbing). The health/model-status
+  indicator (shipped) is the groundwork.
+- **Bring-your-own LLM API token (future track — do not build yet):** add a hosted-model engine
+  behind the `TranslationEngine` interface so users can translate with an API key instead of a
+  local Ollama. Local-first still holds; accounts/cloud (behind `StorageService`) only if
+  adoption warrants it. Don't block this in task 14.
 
 Hard rule for all of the above: flag major decisions for confirmation even in autopilot, keep
 storage/engine behind their interfaces, keep tests offline on the mock engine, one commit per

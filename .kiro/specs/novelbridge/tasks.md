@@ -114,3 +114,65 @@ is runnable (against the mock engine) as early as possible.
     translation against the Ollama server (`qwen3.5:0.8b`) to confirm the real streaming path;
     add a top-level README with run instructions; remove any scratch files.
   - _Requirements: 4.1, 4.4, 5.2, 6.1_
+
+## Post-PoC backlog (from testing feedback)
+
+These extend the original plan after hands-on testing. Keep storage/engine behind their
+interfaces, keep tests offline on the mock engine, flag major decisions for confirmation even
+in autopilot, and make one local commit per task. Full context in
+`.kiro/steering/tech.md` ("Planned work & known issues") and `frontend-plan.md`.
+
+Note: `num_thread` (per-request CPU cap) is already implemented in config + the Ollama engine.
+
+### Backend
+
+- [x] 11. Max concurrent translations
+  - Add `NB_MAX_CONCURRENT_TRANSLATIONS` to `config.py` (default 1) + `.env.example`/`.env`.
+  - Enforce in `api/translate.py` with an `asyncio.Semaphore`; release on completion, error,
+    and client disconnect. Decision (confirmed with author): **queue by awaiting the semaphore,
+    with an `NB_QUEUE_TIMEOUT_SECONDS` (default 30) cap** that emits a busy SSE `error` instead
+    of blocking forever. Also emits a `waiting for a free translation slot` info event.
+  - Added `tests/test_concurrency.py` (mock engine with a delay) asserting the cap serializes
+    (overlap==1 at cap 1, overlap==2 at cap 2) and that the queue timeout emits a busy error.
+
+- [ ] 12. Delete saved translations (endpoint)
+  - `delete_translation(tid) -> bool` on `StorageService` + SQLite impl.
+  - `DELETE /api/translations/{tid}` (204 / 404) in `api/projects.py`; add a test.
+  - Update API tables in `tech.md`, `design.md`, and the root `README.md`.
+
+- [ ] 13. Fix reference-echo bug + restructure prompts (design + confirm first)
+  - Diagnose why attaching a reference makes the model echo it instead of translating the raw
+    input (`services/prompt.py` + `context_builder.py`). Restructure into named prompts with a
+    strong goal/output-format preamble: translate ONLY the raw chapter; reference is for
+    style/consistency and must never be reproduced; output only the translation.
+  - Treat references as a source for a short summary + candidate glossary entries rather than a
+    raw dump. Propose the mechanism (separate engine call vs. heuristic) and any new storage/
+    endpoint; write a short design note and confirm before building. Update tests.
+
+- [ ] 14. English-first glossary matching (design discussion, then maybe implement)
+  - Glossary is for validation; users often know the English name, not the source term. Explore
+    storing English surface forms and fuzzy/alias-matching against output (English↔source pairs,
+    possibly harvested from task 13 summaries). No heavy NLP deps. Depends on task 13; author
+    picks a direction before implementation.
+
+- [ ] 15. Model picker (deferred; capture only)
+  - `GET /api/models` proxying Ollama `/api/tags`, plus per-request model plumbing (engine
+    already accepts `TranslationRequest.model`). Build after the frontend model-status indicator.
+
+### Frontend
+
+- [ ] 16. Dark mode (keep simple; confirm scope)
+  - Toggle `dark` class on `<html>` with localStorage + `prefers-color-scheme` on first load;
+    wire the sonner toaster theme without `next-themes`; unobtrusive toggle. No flash on load.
+
+- [ ] 17. Delete saved translations (UI)
+  - Per-row delete in `history-panel.tsx` via `ConfirmDialog`, calling task 12's endpoint.
+    Reset panes if the loaded translation is deleted; refresh the project count.
+
+- [ ] 18. Fix streaming scroll-follow
+  - In `translate-tab.tsx`, only autoscroll when pinned near the bottom so users can scroll up
+    mid-stream; optional "jump to latest"; respect reduced-motion.
+
+- [ ] 19. Model-status indicator
+  - Poll `GET /api/health`; show engine + model + reachable dot; make `engine=="mock"` obvious.
+    Groundwork before the deferred model picker (task 15).

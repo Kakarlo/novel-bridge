@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -16,6 +17,20 @@ from app.services import context_builder as cb
 from app.storage.base import StorageService
 
 router = APIRouter(prefix="/api", tags=["translate"])
+
+# One semaphore per configured cap. Keyed by the limit so tests that spin up an
+# app with a different NB_MAX_CONCURRENT_TRANSLATIONS get a correctly-sized gate
+# without leaking state across configurations.
+_semaphores: dict[int, asyncio.Semaphore] = {}
+
+
+def _get_semaphore(limit: int) -> asyncio.Semaphore:
+    limit = max(1, limit)
+    sem = _semaphores.get(limit)
+    if sem is None:
+        sem = asyncio.Semaphore(limit)
+        _semaphores[limit] = sem
+    return sem
 
 
 def _sse(data: dict) -> str:
@@ -47,30 +62,58 @@ def translate(
         reference_context=built.reference_context,
     )
 
+    sem = _get_semaphore(settings.nb_max_concurrent_translations)
+    timeout = settings.nb_queue_timeout_seconds
+
     async def event_stream() -> AsyncIterator[str]:
         collected: list[str] = []
         model_used = settings.ollama_model if engine.name == "ollama" else engine.name
-        if built.truncated:
-            yield _sse({"info": "reference context truncated to fit the model window"})
+
+        # Cap simultaneous in-flight translations. If a slot isn't free, queue by
+        # awaiting the semaphore, but give up after `timeout` so the client isn't
+        # left waiting indefinitely.
+        if sem.locked():
+            yield _sse({"info": "waiting for a free translation slot"})
         try:
-            async for chunk in engine.stream(req):
-                if chunk.content:
-                    collected.append(chunk.content)
-                    yield _sse({"content": chunk.content})
-                if chunk.done:
-                    if chunk.meta and chunk.meta.get("model"):
-                        model_used = chunk.meta["model"]
-                    break
-        except Exception as exc:  # engine unreachable / mid-stream failure
-            yield _sse({"error": f"Translation failed: {exc}"})
+            await asyncio.wait_for(sem.acquire(), timeout=timeout)
+        except asyncio.TimeoutError:
+            yield _sse(
+                {
+                    "error": (
+                        "Server busy: too many translations in progress. "
+                        "Please try again shortly."
+                    )
+                }
+            )
             return
 
-        output_text = "".join(collected).strip()
-        # Auto-save on completion (Requirement 4.6 / decision Q13).
-        saved = store.save_translation(
-            pid, body.source_lang, body.raw_text, output_text, model_used
-        )
-        yield _sse({"done": True, "translation_id": saved.id})
+        try:
+            if built.truncated:
+                yield _sse(
+                    {"info": "reference context truncated to fit the model window"}
+                )
+            try:
+                async for chunk in engine.stream(req):
+                    if chunk.content:
+                        collected.append(chunk.content)
+                        yield _sse({"content": chunk.content})
+                    if chunk.done:
+                        if chunk.meta and chunk.meta.get("model"):
+                            model_used = chunk.meta["model"]
+                        break
+            except Exception as exc:  # engine unreachable / mid-stream failure
+                yield _sse({"error": f"Translation failed: {exc}"})
+                return
+
+            output_text = "".join(collected).strip()
+            # Auto-save on completion (Requirement 4.6 / decision Q13).
+            saved = store.save_translation(
+                pid, body.source_lang, body.raw_text, output_text, model_used
+            )
+            yield _sse({"done": True, "translation_id": saved.id})
+        finally:
+            # Release on completion, error, or client disconnect (GeneratorExit).
+            sem.release()
 
     return StreamingResponse(
         event_stream(),

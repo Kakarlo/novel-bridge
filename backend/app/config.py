@@ -25,7 +25,16 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://192.168.254.22:11434"
     ollama_model: str = "qwen3.5:0.8b"
     ollama_num_ctx: int = 16384
+    ollama_num_thread: int = 2
     ollama_think: bool = False
+
+    # Concurrency
+    # Caps simultaneous in-flight translations (PARALLEL requests). num_thread caps
+    # CPU within a single request; this caps how many run at once.
+    nb_max_concurrent_translations: int = 1
+    # How long a queued request waits for a free slot before giving up with an
+    # SSE error, so clients don't block indefinitely.
+    nb_queue_timeout_seconds: float = 30.0
 
     # Context budgeting
     nb_context_budget_tokens: int = 12000

@@ -4,15 +4,10 @@ import { BookMarked, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ModelStatus } from "@/components/model-status";
 import { cn } from "@/lib/utils";
 import { langLabel } from "@/lib/format";
 import type { Project, ProjectCreate, SourceLang } from "@/api/types";
@@ -26,14 +21,7 @@ interface ProjectSidebarProps {
   onDelete: (id: string) => Promise<void>;
 }
 
-export function ProjectSidebar({
-  projects,
-  activeId,
-  loading,
-  onSelect,
-  onCreate,
-  onDelete,
-}: ProjectSidebarProps) {
+export function ProjectSidebar({ projects, activeId, loading, onSelect, onCreate, onDelete }: ProjectSidebarProps) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [lang, setLang] = useState<SourceLang>("zh");
@@ -64,19 +52,13 @@ export function ProjectSidebar({
           <BookMarked className="size-4" />
         </div>
         <div className="leading-tight">
-          <div className="font-heading text-lg font-semibold tracking-tight">
-            NovelBridge
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            context-aware translation
-          </div>
+          <div className="font-heading text-lg font-semibold tracking-tight">NovelBridge</div>
+          <div className="text-[11px] text-muted-foreground">context-aware translation</div>
         </div>
       </div>
 
       <div className="flex items-center justify-between px-5 pb-2">
-        <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-          Series
-        </span>
+        <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Series</span>
         <Button
           size="icon-xs"
           variant="ghost"
@@ -89,10 +71,7 @@ export function ProjectSidebar({
       </div>
 
       {adding && (
-        <form
-          onSubmit={submitNew}
-          className="mx-3 mb-2 space-y-2.5 rounded-lg border bg-background p-3"
-        >
+        <form onSubmit={submitNew} className="mx-3 mb-2 space-y-2.5 rounded-lg border bg-background p-3">
           <div className="space-y-1.5">
             <Label htmlFor="new-project-name" className="text-xs">
               Series name
@@ -108,10 +87,7 @@ export function ProjectSidebar({
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Source language</Label>
-            <Select
-              value={lang}
-              onValueChange={(v) => setLang(v as SourceLang)}
-            >
+            <Select value={lang} onValueChange={(v) => setLang(v as SourceLang)}>
               <SelectTrigger size="sm" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -144,16 +120,12 @@ export function ProjectSidebar({
         {loading ? (
           <div className="space-y-1.5 py-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-12 animate-pulse rounded-lg bg-muted/60"
-              />
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-muted/60" />
             ))}
           </div>
         ) : projects.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm text-muted-foreground">
-            No series yet. Create one to start building its glossary and
-            references.
+            No series yet. Create one to start building its glossary and references.
           </p>
         ) : (
           <ul className="space-y-0.5 py-1">
@@ -164,9 +136,7 @@ export function ProjectSidebar({
                   <div
                     className={cn(
                       "group/item relative flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors duration-150",
-                      active
-                        ? "bg-sidebar-accent"
-                        : "hover:bg-sidebar-accent/60"
+                      active ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60"
                     )}
                     onClick={() => onSelect(p.id)}
                   >
@@ -178,12 +148,8 @@ export function ProjectSidebar({
                       aria-hidden
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {p.name}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {langLabel(p.source_lang)}
-                      </div>
+                      <div className="truncate text-sm font-medium">{p.name}</div>
+                      <div className="text-[11px] text-muted-foreground">{langLabel(p.source_lang)}</div>
                     </div>
                     <Button
                       size="icon-xs"
@@ -205,17 +171,19 @@ export function ProjectSidebar({
         )}
       </ScrollArea>
 
+      {/* Footer: engine/model health. Groundwork for a future model picker. */}
+      <div className="border-t p-3">
+        <ModelStatus />
+      </div>
+
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
         title="Delete this series?"
         description={
           <>
-            <span className="font-medium text-foreground">
-              {pendingDelete?.name}
-            </span>{" "}
-            and all its references, glossary entries, and saved translations
-            will be permanently removed. This can’t be undone.
+            <span className="font-medium text-foreground">{pendingDelete?.name}</span> and all its references, glossary
+            entries, and saved translations will be permanently removed. This can’t be undone.
           </>
         }
         confirmLabel="Delete series"

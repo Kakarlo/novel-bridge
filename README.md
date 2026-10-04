@@ -67,22 +67,18 @@ python -m venv .venv
 copy .env.example .env   # then edit if your Ollama server differs
 ```
 
-Real translation (default engine, needs Ollama):
+Then start it with the run script:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
-```
-
-Offline / no Ollama (deterministic mock engine):
-
-```powershell
-$env:NB_ENGINE="mock"
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+.\run.ps1          # real translation (default engine, needs Ollama)
+.\run.ps1 -Mock    # offline / no Ollama (deterministic mock engine)
+.\run.ps1 -Port 9000   # custom port
 ```
 
 The API serves at `http://127.0.0.1:8000` — Swagger UI at `/docs`, health at `/api/health`.
 
-> On macOS/Linux the venv Python is `./.venv/bin/python` and you'd use `export NB_ENGINE=mock`.
+> On macOS/Linux use `./run.sh` (and `./run.sh --mock`). The scripts just wrap
+> `.venv/.../python -m uvicorn app.main:app`, so that longer form still works if you prefer it.
 
 ### 2. Frontend
 

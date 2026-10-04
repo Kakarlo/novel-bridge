@@ -27,15 +27,9 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  init?: RequestInit & { parse?: boolean }
-): Promise<T> {
+async function request<T>(path: string, init?: RequestInit & { parse?: boolean }): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers:
-      init?.body != null
-        ? { "Content-Type": "application/json", ...(init?.headers ?? {}) }
-        : init?.headers,
+    headers: init?.body != null ? { "Content-Type": "application/json", ...(init?.headers ?? {}) } : init?.headers,
     ...init,
   });
 
@@ -72,26 +66,21 @@ export const api = {
 
   // --- projects ---
   listProjects: () => request<Project[]>("/projects"),
-  createProject: (body: ProjectCreate) =>
-    request<Project>("/projects", { method: "POST", body: JSON.stringify(body) }),
+  createProject: (body: ProjectCreate) => request<Project>("/projects", { method: "POST", body: JSON.stringify(body) }),
   getProject: (id: string) => request<ProjectDetail>(`/projects/${id}`),
-  deleteProject: (id: string) =>
-    request<void>(`/projects/${id}`, { method: "DELETE" }),
+  deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
 
   // --- references ---
-  listReferences: (pid: string) =>
-    request<ReferenceChapter[]>(`/projects/${pid}/references`),
+  listReferences: (pid: string) => request<ReferenceChapter[]>(`/projects/${pid}/references`),
   addReference: (pid: string, body: ReferenceCreate) =>
     request<ReferenceChapter>(`/projects/${pid}/references`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  deleteReference: (refId: string) =>
-    request<void>(`/references/${refId}`, { method: "DELETE" }),
+  deleteReference: (refId: string) => request<void>(`/references/${refId}`, { method: "DELETE" }),
 
   // --- glossary ---
-  listGlossary: (pid: string) =>
-    request<GlossaryEntry[]>(`/projects/${pid}/glossary`),
+  listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),
   createGlossary: (pid: string, body: GlossaryCreate) =>
     request<GlossaryEntry>(`/projects/${pid}/glossary`, {
       method: "POST",
@@ -102,23 +91,19 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  deleteGlossary: (entryId: string) =>
-    request<void>(`/glossary/${entryId}`, { method: "DELETE" }),
+  deleteGlossary: (entryId: string) => request<void>(`/glossary/${entryId}`, { method: "DELETE" }),
 
   // --- translations ---
-  listTranslations: (pid: string) =>
-    request<Translation[]>(`/projects/${pid}/translations`),
+  listTranslations: (pid: string) => request<Translation[]>(`/projects/${pid}/translations`),
   getTranslation: (tid: string) => request<Translation>(`/translations/${tid}`),
+  // Backed by DELETE /api/translations/{tid} (204/404) — endpoint is live.
+  deleteTranslation: (tid: string) => request<void>(`/translations/${tid}`, { method: "DELETE" }),
 
   /**
    * Open the SSE translate stream. Returns an async iterator of parsed events;
    * the caller renders content chunks live and watches for done/error.
    */
-  translateStream: (
-    pid: string,
-    body: TranslateRequest,
-    signal?: AbortSignal
-  ) =>
+  translateStream: (pid: string, body: TranslateRequest, signal?: AbortSignal) =>
     streamSse<TranslateEvent>({
       url: `${BASE}/projects/${pid}/translate`,
       body,

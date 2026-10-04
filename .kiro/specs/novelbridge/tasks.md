@@ -159,11 +159,23 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
   - Contract change flagged for frontend: `ReferenceChapter` gains `summary` + `candidate_terms`;
     new resummarize route.
 
-- [ ] 14. English-first glossary matching (design discussion, then maybe implement)
-  - Glossary is for validation; users often know the English name, not the source term. Explore
-    storing English surface forms and fuzzy/alias-matching against output (English↔source pairs,
-    possibly harvested from task 13 summaries). No heavy NLP deps. Depends on task 13; author
-    picks a direction before implementation.
+- [ ] 14. English-first glossary matching (design discussion done; implementation pending author pick)
+  - Glossary is for validation; users often know the English name, not the source term. Store
+    English surface forms and fuzzy/alias-match against output (English↔source pairs, possibly
+    harvested from task 13 `candidate_terms`). No heavy NLP deps. Depends on task 13 (shipped).
+  - **Design options produced** (session design note). Axes + leaning recommendation:
+    - Data model: A1 add optional `english_name` / **A2 make English the key, source optional** /
+      A3 add `aliases` list for drift.
+    - Matching (stdlib only): B1 substring / **B2 normalized exact** → **B3 `difflib` fuzzy**
+      fallback with a tunable `NB_GLOSSARY_MATCH_THRESHOLD`.
+    - When: **C1 on-demand `POST /api/projects/{id}/glossary/validate`** (raw text or
+      `translation_id`) / C2 inline in translate SSE / C3 frontend-only.
+    - Reference seeding: **D1 suggest-only chips** from `candidate_terms` / D3 harvest English
+      only; avoid D2 auto-pair (small models align CN/JP↔EN poorly).
+  - **Open decisions before building:** (1) data model A1/A2/A3; (2) do English entries steer the
+    prompt or only validate after; (3) normalized-exact vs fuzzy from day one + threshold; (4)
+    on-demand vs inline; (5) seed from references now or defer. Best landed with the frontend
+    glossary-tab rework so the HTTP contract changes once.
 
 - [ ] 15. Model picker (deferred; capture only)
   - `GET /api/models` proxying Ollama `/api/tags`, plus per-request model plumbing (engine

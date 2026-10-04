@@ -78,6 +78,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteReference: (refId: string) => request<void>(`/references/${refId}`, { method: "DELETE" }),
+  // Re-run summary + candidate-term extraction for one reference (e.g. after the
+  // engine was offline at upload). Returns the updated reference.
+  resummarizeReference: (refId: string) =>
+    request<ReferenceChapter>(`/references/${refId}/resummarize`, { method: "POST" }),
 
   // --- glossary ---
   listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),

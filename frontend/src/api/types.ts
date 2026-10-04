@@ -27,6 +27,10 @@ export interface ReferenceChapter {
   title: string;
   content: string;
   created_at: string;
+  // Derived at upload time by the engine (summary + candidate glossary terms).
+  // Both may be absent if extraction hasn't run yet (e.g. engine was offline).
+  summary: string | null;
+  candidate_terms: string[];
 }
 
 export interface GlossaryEntry {
@@ -92,11 +96,7 @@ export interface SseErrorEvent {
   error: string;
 }
 
-export type TranslateEvent =
-  | SseContentEvent
-  | SseInfoEvent
-  | SseDoneEvent
-  | SseErrorEvent;
+export type TranslateEvent = SseContentEvent | SseInfoEvent | SseDoneEvent | SseErrorEvent;
 
 export function isContentEvent(e: TranslateEvent): e is SseContentEvent {
   return "content" in e;

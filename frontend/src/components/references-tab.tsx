@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Trash2, X } from "lucide-react";
+import { BookA, FileText, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { ReferenceChapter } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,9 +20,7 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<ReferenceChapter | null>(
-    null
-  );
+  const [pendingDelete, setPendingDelete] = useState<ReferenceChapter | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -34,8 +33,7 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
         if (active) setItems(data);
       })
       .catch((e) => {
-        if (active)
-          toast.error(e instanceof Error ? e.message : "Failed to load");
+        if (active) toast.error(e instanceof Error ? e.message : "Failed to load");
       })
       .finally(() => active && setLoading(false));
     return () => {
@@ -79,9 +77,11 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
   if (selected) {
     return (
       <ReferenceReader
+        projectId={projectId}
         reference={selected}
         onBack={() => setSelectedId(null)}
         onDelete={() => setPendingDelete(selected)}
+        onUpdated={(ref) => setItems((prev) => prev.map((r) => (r.id === ref.id ? ref : r)))}
         pendingDelete={pendingDelete}
         setPendingDelete={setPendingDelete}
         onConfirmDelete={handleDelete}
@@ -93,12 +93,9 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-4 border-b px-6 py-4">
         <div>
-          <h2 className="font-heading text-xl font-semibold tracking-tight">
-            Reference chapters
-          </h2>
+          <h2 className="font-heading text-xl font-semibold tracking-tight">Reference chapters</h2>
           <p className="text-sm text-muted-foreground">
-            Paste previously translated chapters. The newest one anchors tone
-            and continuity.
+            Paste previously translated chapters. The newest one anchors tone and continuity.
           </p>
         </div>
         <Button onClick={() => setComposing(true)} data-icon="inline-start">
@@ -131,11 +128,21 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{ref.title}</div>
                     <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
-                      {ref.content}
+                      {ref.summary?.trim() || ref.content}
                     </p>
-                    <div className="mt-1 text-[11px] text-muted-foreground/80">
-                      {ref.content.length.toLocaleString()} chars ·{" "}
-                      {formatDate(ref.created_at)}
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
+                      <span>{ref.content.length.toLocaleString()} chars</span>
+                      <span>·</span>
+                      <span>{formatDate(ref.created_at)}</span>
+                      {ref.summary ? (
+                        <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[10px]">
+                          {ref.candidate_terms.length} term{ref.candidate_terms.length === 1 ? "" : "s"}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">
+                          not summarized
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <Trash2
@@ -158,10 +165,8 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
         title="Remove this reference?"
         description={
           <>
-            <span className="font-medium text-foreground">
-              {pendingDelete?.title}
-            </span>{" "}
-            will no longer be used for context.
+            <span className="font-medium text-foreground">{pendingDelete?.title}</span> will no longer be used for
+            context.
           </>
         }
         confirmLabel="Remove"
@@ -205,9 +210,7 @@ function ReferenceComposer({
       toast.success("Reference added");
       onAdded(ref);
     } catch (e) {
-      toast.error(
-        e instanceof ApiError ? e.message : "Could not add reference"
-      );
+      toast.error(e instanceof ApiError ? e.message : "Could not add reference");
     } finally {
       setSubmitting(false);
     }
@@ -216,9 +219,7 @@ function ReferenceComposer({
   return (
     <form onSubmit={submit} className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-6 py-4">
-        <h2 className="font-heading text-xl font-semibold tracking-tight">
-          Add a reference chapter
-        </h2>
+        <h2 className="font-heading text-xl font-semibold tracking-tight">Add a reference chapter</h2>
         <Button type="button" variant="ghost" size="icon-sm" onClick={onCancel}>
           <X />
           <span className="sr-only">Cancel</span>
@@ -235,9 +236,7 @@ function ReferenceComposer({
             placeholder="Chapter 12 — The Gu Master's Return"
             aria-invalid={touched && titleEmpty}
           />
-          {touched && titleEmpty && (
-            <p className="text-xs text-destructive">A title is required.</p>
-          )}
+          {touched && titleEmpty && <p className="text-xs text-destructive">A title is required.</p>}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col space-y-1.5">
@@ -248,19 +247,13 @@ function ReferenceComposer({
             onChange={(e) => setContent(e.target.value)}
             placeholder="Paste the full English translation of this chapter…"
             aria-invalid={touched && contentEmpty}
-            className={cn(
-              "min-h-0 flex-1 resize-none font-serif text-[0.95rem] leading-relaxed"
-            )}
+            className={cn("min-h-0 flex-1 resize-none font-serif text-[0.95rem] leading-relaxed")}
           />
           <div className="flex items-center justify-between">
             {touched && contentEmpty ? (
-              <p className="text-xs text-destructive">
-                Reference content can’t be empty.
-              </p>
+              <p className="text-xs text-destructive">Reference content can’t be empty.</p>
             ) : (
-              <span className="text-[11px] text-muted-foreground">
-                {content.length.toLocaleString()} characters
-              </span>
+              <span className="text-[11px] text-muted-foreground">{content.length.toLocaleString()} characters</span>
             )}
           </div>
         </div>
@@ -279,43 +272,66 @@ function ReferenceComposer({
 }
 
 function ReferenceReader({
+  projectId,
   reference,
   onBack,
   onDelete,
+  onUpdated,
   pendingDelete,
   setPendingDelete,
   onConfirmDelete,
 }: {
+  projectId: string;
   reference: ReferenceChapter;
   onBack: () => void;
   onDelete: () => void;
+  onUpdated: (ref: ReferenceChapter) => void;
   pendingDelete: ReferenceChapter | null;
   setPendingDelete: (r: ReferenceChapter | null) => void;
   onConfirmDelete: (r: ReferenceChapter) => Promise<void>;
 }) {
+  const [resummarizing, setResummarizing] = useState(false);
+
+  async function resummarize() {
+    try {
+      setResummarizing(true);
+      const updated = await api.resummarizeReference(reference.id);
+      onUpdated(updated);
+      toast.success("Reference re-summarized");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Re-summarize failed");
+    } finally {
+      setResummarizing(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-4 border-b px-6 py-4">
         <div className="min-w-0">
-          <button
-            onClick={onBack}
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
+          <button onClick={onBack} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
             ← All references
           </button>
-          <h2 className="truncate font-heading text-xl font-semibold tracking-tight">
-            {reference.title}
-          </h2>
+          <h2 className="truncate font-heading text-xl font-semibold tracking-tight">{reference.title}</h2>
         </div>
-        <Button variant="destructive" size="sm" onClick={onDelete}>
-          <Trash2 />
-          Remove
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={resummarize} disabled={resummarizing} data-icon="inline-start">
+            <RefreshCw className={cn(resummarizing && "animate-spin")} />
+            {resummarizing ? "Re-summarizing…" : "Re-summarize"}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onDelete}>
+            <Trash2 />
+            Remove
+          </Button>
+        </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <article className="mx-auto max-w-2xl px-6 py-8 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
-          {reference.content}
-        </article>
+        <div className="mx-auto max-w-2xl px-6 py-8">
+          <DerivedContext projectId={projectId} reference={reference} />
+          <article className="mt-6 border-t pt-6 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
+            {reference.content}
+          </article>
+        </div>
       </ScrollArea>
 
       <ConfirmDialog
@@ -324,10 +340,8 @@ function ReferenceReader({
         title="Remove this reference?"
         description={
           <>
-            <span className="font-medium text-foreground">
-              {pendingDelete?.title}
-            </span>{" "}
-            will no longer be used for context.
+            <span className="font-medium text-foreground">{pendingDelete?.title}</span> will no longer be used for
+            context.
           </>
         }
         confirmLabel="Remove"
@@ -337,5 +351,159 @@ function ReferenceReader({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * The engine-derived context for a reference: a short style/plot summary and
+ * candidate glossary terms. Candidate terms are source-language suggestions, not
+ * authoritative mappings — promoting one opens a quick form to supply the English
+ * rendering, which creates a real (authoritative) glossary entry. Keeping bare
+ * candidate terms out of the glossary is deliberate: unmapped source tokens don't
+ * stabilize names on their own.
+ */
+function DerivedContext({ projectId, reference }: { projectId: string; reference: ReferenceChapter }) {
+  const [promoting, setPromoting] = useState<string | null>(null);
+  // Terms already promoted this session, so the chip can show a done state
+  // without a full refetch of the glossary.
+  const [promoted, setPromoted] = useState<Set<string>>(new Set());
+
+  const hasSummary = !!reference.summary?.trim();
+  const terms = reference.candidate_terms ?? [];
+
+  if (!hasSummary && terms.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <Sparkles className="mr-1.5 inline size-3.5" />
+        No derived context yet. Use “Re-summarize” to extract a summary and candidate terms (the engine must be
+        reachable).
+      </div>
+    );
+  }
+
+  async function promote(term: string, translation: string) {
+    const en = translation.trim();
+    if (!en) return;
+    try {
+      await api.createGlossary(projectId, { source_term: term, translation: en });
+      setPromoted((prev) => new Set(prev).add(term));
+      setPromoting(null);
+      toast.success(`Added “${term} → ${en}” to the glossary`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not add to glossary");
+    }
+  }
+
+  return (
+    <section className="space-y-4 rounded-lg border bg-muted/20 p-4">
+      <div className="flex items-center gap-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+        <Sparkles className="size-3.5" />
+        Derived context
+      </div>
+
+      {hasSummary && (
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-foreground">Summary</div>
+          <p className="text-sm leading-relaxed text-muted-foreground">{reference.summary}</p>
+        </div>
+      )}
+
+      {terms.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-foreground">
+            Candidate terms
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              — add to the glossary with an English mapping to make them authoritative
+            </span>
+          </div>
+          <ul className="flex flex-wrap gap-1.5">
+            {terms.map((term) => {
+              const done = promoted.has(term);
+              return (
+                <li key={term}>
+                  {done ? (
+                    <Badge variant="secondary" className="gap-1 font-normal" data-icon="inline-start">
+                      <BookA className="size-3" />
+                      {term}
+                    </Badge>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="h-6 gap-1 font-normal"
+                      onClick={() => setPromoting(term)}
+                      title="Add to glossary"
+                    >
+                      {term}
+                      <Plus className="size-3 opacity-70" />
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {promoting !== null && (
+        <PromoteTermForm
+          term={promoting}
+          onCancel={() => setPromoting(null)}
+          onSubmit={(translation) => promote(promoting, translation)}
+        />
+      )}
+    </section>
+  );
+}
+
+function PromoteTermForm({
+  term,
+  onCancel,
+  onSubmit,
+}: {
+  term: string;
+  onCancel: () => void;
+  onSubmit: (translation: string) => void | Promise<void>;
+}) {
+  const [translation, setTranslation] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!translation.trim()) return;
+    setSaving(true);
+    try {
+      await onSubmit(translation);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="flex items-end gap-2 rounded-md border bg-background p-3">
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Source term</Label>
+        <div className="flex h-8 items-center rounded-md border bg-muted/40 px-2.5 text-sm font-medium">{term}</div>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <Label htmlFor="promote-en" className="text-[11px] text-muted-foreground">
+          English mapping
+        </Label>
+        <Input
+          id="promote-en"
+          autoFocus
+          value={translation}
+          onChange={(e) => setTranslation(e.target.value)}
+          placeholder="e.g. Fang Yuan"
+          className="h-8"
+        />
+      </div>
+      <Button type="submit" size="sm" disabled={!translation.trim() || saving}>
+        Add
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
+        Cancel
+      </Button>
+    </form>
   );
 }

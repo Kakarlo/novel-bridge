@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  ArrowDown,
   CheckCircle2,
   Clock,
   History,
@@ -44,6 +45,12 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   const [viewingId, setViewingId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
+  // "Stick to bottom" autoscroll: only auto-follow the stream while the user is
+  // pinned near the bottom. If they scroll up to read, stop following until they
+  // return. `stickRef` is the live value the scroll effect reads; `atBottom`
+  // drives the "jump to latest" affordance.
+  const stickRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
 
   // Reset the workspace when switching projects, but keep the raw input
   // tied to the project the user is on.
@@ -59,11 +66,41 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setLang(defaultLang);
   }, [projectId, defaultLang]);
 
-  // Autoscroll the output pane as tokens arrive.
+  // Track whether the user is pinned to the bottom of the output pane. When
+  // they scroll up mid-stream we stop auto-following; when they come back to
+  // the bottom we resume. Threshold tolerates sub-pixel/line rounding.
+  const getViewport = () =>
+    outputScrollRef.current?.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]") ?? null;
+
   useEffect(() => {
-    const el = outputScrollRef.current?.querySelector("[data-radix-scroll-area-viewport]");
+    const el = getViewport();
+    if (!el) return;
+    const onScroll = () => {
+      const stuck = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+      stickRef.current = stuck;
+      setAtBottom(stuck);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Autoscroll as tokens arrive — but only while stuck to the bottom.
+  useEffect(() => {
+    if (!stickRef.current) return;
+    const el = getViewport();
     if (el) el.scrollTop = el.scrollHeight;
   }, [output]);
+
+  function jumpToLatest() {
+    const el = getViewport();
+    if (!el) return;
+    const prefersReduced =
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: prefersReduced ? "auto" : "smooth" });
+    stickRef.current = true;
+    setAtBottom(true);
+  }
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -81,6 +118,9 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setErrorMsg(null);
     setInfoMsg(null);
     setViewingId(null);
+    // Fresh stream: follow from the top down.
+    stickRef.current = true;
+    setAtBottom(true);
 
     try {
       const stream = api.translateStream(projectId, { raw_text: raw, source_lang: lang }, controller.signal);
@@ -245,8 +285,22 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           </section>
 
           {/* Output pane */}
-          <section className="flex min-h-0 flex-col bg-muted/20">
+          <section className="relative flex min-h-0 flex-col bg-muted/20">
             <PaneHeader label="English" meta={outputMeta(status, output)} />
+            {streaming && !atBottom && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={jumpToLatest}
+                  data-icon="inline-start"
+                  className="pointer-events-auto shadow-md"
+                >
+                  <ArrowDown />
+                  Jump to latest
+                </Button>
+              </div>
+            )}
             <ScrollArea ref={outputScrollRef} className="min-h-0 flex-1">
               {output ? (
                 <div className="px-6 py-5 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
@@ -281,6 +335,13 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
             activeId={viewingId}
             onClose={() => setHistoryOpen(false)}
             onSelect={loadSaved}
+            onDeleted={(tid) => {
+              // If the deleted translation is the one loaded in the panes,
+              // reset to a fresh editor so we're not showing a stale save.
+              if (tid === viewingId) newTranslation();
+              // Keep the project's saved-translations count in sync.
+              onSaved?.();
+            }}
           />
         )}
       </div>

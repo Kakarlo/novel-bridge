@@ -1,17 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Info, Languages, Loader2, Sparkles, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  History,
+  Info,
+  Languages,
+  Loader2,
+  Pencil,
+  Sparkles,
+  Square,
+} from "lucide-react";
 
 import { api } from "@/api/client";
-import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang } from "@/api/types";
+import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang, type Translation } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { HistoryPanel } from "@/components/history-panel";
 import { langLabel } from "@/lib/format";
 
-type Status = "idle" | "streaming" | "done" | "error";
+type Status = "idle" | "streaming" | "done" | "error" | "viewing";
 
 interface TranslateTabProps {
   projectId: string;
@@ -27,6 +39,9 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -39,6 +54,8 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setStatus("idle");
     setErrorMsg(null);
     setInfoMsg(null);
+    setViewingId(null);
+    setHistoryOpen(false);
     setLang(defaultLang);
   }, [projectId, defaultLang]);
 
@@ -51,6 +68,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const streaming = status === "streaming";
+  const viewing = status === "viewing";
   const canTranslate = raw.trim().length > 0 && !streaming;
 
   async function translate() {
@@ -62,6 +80,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setOutput("");
     setErrorMsg(null);
     setInfoMsg(null);
+    setViewingId(null);
 
     try {
       const stream = api.translateStream(projectId, { raw_text: raw, source_lang: lang }, controller.signal);
@@ -78,6 +97,8 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           return;
         } else if (isDoneEvent(event)) {
           setStatus("done");
+          setViewingId(event.translation_id);
+          setHistoryKey((k) => k + 1);
           onSaved?.();
           toast.success("Translation saved");
           return;
@@ -100,6 +121,24 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   function stop() {
     abortRef.current?.abort();
     setStatus(output ? "done" : "idle");
+  }
+
+  function loadSaved(t: Translation) {
+    abortRef.current?.abort();
+    setRaw(t.raw_text);
+    setOutput(t.output_text);
+    setLang(t.source_lang);
+    setViewingId(t.id);
+    setStatus("viewing");
+    setErrorMsg(null);
+    setInfoMsg(null);
+  }
+
+  function newTranslation() {
+    setRaw("");
+    setOutput("");
+    setViewingId(null);
+    setStatus("idle");
   }
 
   return (
@@ -134,6 +173,16 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
               Translate
             </Button>
           )}
+          <Button
+            variant={historyOpen ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setHistoryOpen((v) => !v)}
+            aria-label="Saved translations"
+            aria-pressed={historyOpen}
+            title="Saved translations"
+          >
+            <History />
+          </Button>
         </div>
       </div>
 
@@ -151,6 +200,20 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
         </div>
       )}
 
+      {/* Viewing a saved translation (read-only) */}
+      {viewing && (
+        <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-6 py-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <Clock className="size-3.5" />
+            Viewing a saved translation
+          </span>
+          <Button size="xs" variant="ghost" onClick={newTranslation} data-icon="inline-start">
+            <Pencil />
+            New translation
+          </Button>
+        </div>
+      )}
+
       {/* Error banner — raw text stays intact below */}
       {status === "error" && errorMsg && (
         <div
@@ -165,48 +228,61 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
         </div>
       )}
 
-      {/* Two asymmetric panes */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        {/* Source pane */}
-        <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
-          <PaneHeader label={`Source · ${langLabel(lang)}`} meta={`${raw.length.toLocaleString()} chars`} />
-          <Textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            placeholder={lang === "zh" ? "粘贴原文章节…" : "原文の章をここに貼り付け…"}
-            spellCheck={false}
-            className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-serif text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
-          />
-        </section>
+      {/* Panes + optional history panel */}
+      <div className="flex min-h-0 flex-1">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          {/* Source pane */}
+          <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
+            <PaneHeader label={`Source · ${langLabel(lang)}`} meta={`${raw.length.toLocaleString()} chars`} />
+            <Textarea
+              value={raw}
+              onChange={(e) => setRaw(e.target.value)}
+              readOnly={viewing}
+              placeholder={lang === "zh" ? "粘贴原文章节…" : "原文の章をここに貼り付け…"}
+              spellCheck={false}
+              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-serif text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
+            />
+          </section>
 
-        {/* Output pane */}
-        <section className="flex min-h-0 flex-col bg-muted/20">
-          <PaneHeader label="English" meta={outputMeta(status, output)} />
-          <ScrollArea ref={outputScrollRef} className="min-h-0 flex-1">
-            {output ? (
-              <div className="px-6 py-5 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
-                {output}
-                {streaming && (
-                  <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse bg-accent-brand align-middle" />
-                )}
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center text-sm text-muted-foreground">
-                {streaming ? (
-                  <>
-                    <Loader2 className="size-5 animate-spin text-accent-brand" />
-                    <p className="mt-3">Translating…</p>
-                  </>
-                ) : (
-                  <>
-                    <Languages className="size-5" />
-                    <p className="mt-3 max-w-xs">The translation will stream in here, line by line.</p>
-                  </>
-                )}
-              </div>
-            )}
-          </ScrollArea>
-        </section>
+          {/* Output pane */}
+          <section className="flex min-h-0 flex-col bg-muted/20">
+            <PaneHeader label="English" meta={outputMeta(status, output)} />
+            <ScrollArea ref={outputScrollRef} className="min-h-0 flex-1">
+              {output ? (
+                <div className="px-6 py-5 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
+                  {output}
+                  {streaming && (
+                    <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse bg-accent-brand align-middle" />
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center text-sm text-muted-foreground">
+                  {streaming ? (
+                    <>
+                      <Loader2 className="size-5 animate-spin text-accent-brand" />
+                      <p className="mt-3">Translating…</p>
+                    </>
+                  ) : (
+                    <>
+                      <Languages className="size-5" />
+                      <p className="mt-3 max-w-xs">The translation will stream in here, line by line.</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </ScrollArea>
+          </section>
+        </div>
+
+        {historyOpen && (
+          <HistoryPanel
+            projectId={projectId}
+            refreshKey={historyKey}
+            activeId={viewingId}
+            onClose={() => setHistoryOpen(false)}
+            onSelect={loadSaved}
+          />
+        )}
       </div>
     </div>
   );
@@ -238,6 +314,14 @@ function StatusPill({ status }: { status: Status }) {
       </Badge>
     );
   }
+  if (status === "viewing") {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <Clock className="size-3" />
+        Saved
+      </Badge>
+    );
+  }
   if (status === "error") {
     return (
       <Badge variant="secondary" className="gap-1 bg-destructive/10 text-destructive">
@@ -252,6 +336,6 @@ function StatusPill({ status }: { status: Status }) {
 function outputMeta(status: Status, output: string): string | undefined {
   if (!output) return undefined;
   const chars = `${output.length.toLocaleString()} chars`;
-  if (status === "done") return `${chars} · saved`;
+  if (status === "done" || status === "viewing") return `${chars} · saved`;
   return chars;
 }

@@ -5,8 +5,8 @@ verification. Each task is small, testable, and references the requirements it s
 Automated tests default to the mock engine so they run offline. Tasks are ordered so the app
 is runnable (against the mock engine) as early as possible.
 
-
 ## Tasks
+
 - [x] 1. Scaffold the monorepo and backend skeleton
   - Create `backend/` with `app/` package, `requirements.txt` (fastapi, uvicorn, httpx,
     pydantic, pydantic-settings), and `.env.example` with all config keys.
@@ -87,29 +87,29 @@ is runnable (against the mock engine) as early as possible.
     asserting the SSE event sequence and that a translation row is auto-saved.
   - _Requirements: 1.5, 2.4, 4.5, 4.6_
 
-- [ ] 6. Scaffold the frontend
+- [x] 6. Scaffold the frontend
   - Create `frontend/` via Vite (React + TypeScript), configure Tailwind + shadcn/ui and the
     `@` path alias, and set the Vite dev proxy for `/api` to the backend.
   - Add a typed API client and an SSE consumer utility in `src/api/`.
   - _Requirements: 6.1, 6.3_
 
-- [ ] 7. Build the project + sidebar shell
+- [x] 7. Build the project + sidebar shell
   - Sidebar listing projects with create/select/delete (confirm on delete); main area with
     tabs (References, Glossary, Translate). Empty states handled.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 8. Build the References and Glossary tabs
+- [x] 8. Build the References and Glossary tabs
   - References: paste title + content to add, list, view, delete, with empty-input validation.
   - Glossary: add/edit/delete source_term + translation + optional note, with duplicate handling.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.4_
 
-- [ ] 9. Build the Translate workspace with live streaming
+- [x] 9. Build the Translate workspace with live streaming
   - Separate raw-input and translated-output panes; source-language selector (zh/ja); submit to
     the SSE endpoint and render tokens live; in-progress indicator; preserve raw text on error;
     show saved state and surface "no context available" when the project has no references.
   - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 2.5_
 
-- [ ] 10. End-to-end verification and cleanup
+- [x] 10. End-to-end verification and cleanup
   - Run backend + frontend locally; run the full test suite (mock engine); perform one live
     translation against the Ollama server (`qwen3.5:0.8b`) to confirm the real streaming path;
     add a top-level README with run instructions; remove any scratch files.

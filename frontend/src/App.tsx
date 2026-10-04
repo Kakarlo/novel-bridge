@@ -5,9 +5,11 @@ import { Toaster } from "@/components/ui/sonner";
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { ProjectWorkspace } from "@/components/project-workspace";
 import { useProjects } from "@/hooks/use-projects";
+import { useTheme } from "@/hooks/use-theme";
 
 function App() {
   const { projects, loading, error, create, remove } = useProjects();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // Auto-select the first project once loaded, and keep selection valid
@@ -24,6 +26,8 @@ function App() {
         projects={projects}
         activeId={activeId}
         loading={loading}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onSelect={setActiveId}
         onCreate={create}
         onDelete={async (id) => {
@@ -47,7 +51,7 @@ function App() {
         )}
       </main>
 
-      <Toaster position="bottom-right" />
+      <Toaster position="bottom-right" theme={theme} />
     </div>
   );
 }

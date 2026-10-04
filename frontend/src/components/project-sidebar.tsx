@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookMarked, Plus, Trash2 } from "lucide-react";
+import { BookMarked, Moon, Plus, Sun, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,18 +10,30 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ModelStatus } from "@/components/model-status";
 import { cn } from "@/lib/utils";
 import { langLabel } from "@/lib/format";
+import type { Theme } from "@/hooks/use-theme";
 import type { Project, ProjectCreate, SourceLang } from "@/api/types";
 
 interface ProjectSidebarProps {
   projects: Project[];
   activeId: string | null;
   loading: boolean;
+  theme: Theme;
+  onToggleTheme: () => void;
   onSelect: (id: string) => void;
   onCreate: (body: ProjectCreate) => Promise<Project>;
   onDelete: (id: string) => Promise<void>;
 }
 
-export function ProjectSidebar({ projects, activeId, loading, onSelect, onCreate, onDelete }: ProjectSidebarProps) {
+export function ProjectSidebar({
+  projects,
+  activeId,
+  loading,
+  theme,
+  onToggleTheme,
+  onSelect,
+  onCreate,
+  onDelete,
+}: ProjectSidebarProps) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [lang, setLang] = useState<SourceLang>("zh");
@@ -171,9 +183,20 @@ export function ProjectSidebar({ projects, activeId, loading, onSelect, onCreate
         )}
       </ScrollArea>
 
-      {/* Footer: engine/model health. Groundwork for a future model picker. */}
-      <div className="border-t p-3">
-        <ModelStatus />
+      {/* Footer: engine/model health + theme toggle. */}
+      <div className="flex items-center gap-2 border-t p-3">
+        <div className="min-w-0 flex-1">
+          <ModelStatus />
+        </div>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          onClick={onToggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <Sun /> : <Moon />}
+        </Button>
       </div>
 
       <ConfirmDialog

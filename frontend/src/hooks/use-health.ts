@@ -4,6 +4,8 @@ import { api } from "@/api/client";
 
 export interface Health {
   status: string;
+  /** Whether the backend could actually reach the LLM engine. */
+  reachable: boolean;
   engine: string;
   model: string;
 }

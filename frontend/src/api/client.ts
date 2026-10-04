@@ -62,7 +62,7 @@ async function errorMessage(res: Response): Promise<string> {
 
 export const api = {
   // --- health ---
-  health: () => request<{ status: string; engine: string; model: string }>("/health"),
+  health: () => request<{ status: string; reachable: boolean; engine: string; model: string }>("/health"),
 
   // --- projects ---
   listProjects: () => request<Project[]>("/projects"),

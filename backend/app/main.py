@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import projects, translate
 from app.config import Settings, get_settings
+from app.deps import get_translation_engine
+from app.engines.base import TranslationEngine
 from app.engines.factory import get_engine
 
 
@@ -31,9 +33,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     @app.get("/api/health")
-    def health() -> dict:
+    async def health(
+        engine: TranslationEngine = Depends(get_translation_engine),
+    ) -> dict:
+        # Probe the actual engine (e.g. ping Ollama) rather than echoing config,
+        # so a disconnected LLM server reports as unreachable. The frontend's
+        # status indicator keys off `reachable` for its dot.
+        try:
+            reachable = await engine.health()
+        except Exception:  # noqa: BLE001 - never let the probe raise
+            reachable = False
         return {
-            "status": "ok",
+            "status": "ok" if reachable else "unreachable",
+            "reachable": reachable,
             "engine": settings.nb_engine,
             "model": settings.ollama_model,
         }

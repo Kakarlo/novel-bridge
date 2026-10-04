@@ -64,3 +64,13 @@ def test_translation_save_and_list(store):
     # cascade on project delete
     store.delete_project(p.id)
     assert store.list_translations(p.id) == []
+
+
+def test_translation_delete(store):
+    p = store.create_project("S", "zh")
+    t = store.save_translation(p.id, "zh", "你好", "Hello", "qwen3.5:0.8b")
+    assert store.delete_translation(t.id) is True
+    assert store.get_translation(t.id) is None
+    assert store.list_translations(p.id) == []
+    # deleting a missing id returns False
+    assert store.delete_translation("missing") is False

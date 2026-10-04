@@ -98,16 +98,16 @@ backend first.
 
 All backend config is environment-driven (see `backend/.env.example`):
 
-| Variable                   | Purpose                                   | Default                       |
-| -------------------------- | ----------------------------------------- | ----------------------------- |
-| `NB_ENGINE`                | Engine to use (`ollama` or `mock`)        | `ollama`                      |
-| `OLLAMA_BASE_URL`          | Ollama server base URL                    | `http://192.168.254.22:11434` |
-| `OLLAMA_MODEL`             | Model tag                                 | `qwen3.5:0.8b`                |
-| `OLLAMA_NUM_CTX`           | Context window passed in request options  | `16384`                       |
-| `OLLAMA_THINK`             | Allow the model's thinking preamble       | `false`                       |
-| `NB_CONTEXT_BUDGET_TOKENS` | Token budget for the assembled context    | `12000`                       |
-| `NB_DB_PATH`               | SQLite file path                          | `./novelbridge.db`            |
-| `NB_CORS_ORIGINS`          | Comma-separated allowed frontend origins  | `http://localhost:5173`       |
+| Variable                   | Purpose                                  | Default                       |
+| -------------------------- | ---------------------------------------- | ----------------------------- |
+| `NB_ENGINE`                | Engine to use (`ollama` or `mock`)       | `ollama`                      |
+| `OLLAMA_BASE_URL`          | Ollama server base URL                   | `http://192.168.254.22:11434` |
+| `OLLAMA_MODEL`             | Model tag                                | `qwen3.5:0.8b`                |
+| `OLLAMA_NUM_CTX`           | Context window passed in request options | `16384`                       |
+| `OLLAMA_THINK`             | Allow the model's thinking preamble      | `false`                       |
+| `NB_CONTEXT_BUDGET_TOKENS` | Token budget for the assembled context   | `12000`                       |
+| `NB_DB_PATH`               | SQLite file path                         | `./novelbridge.db`            |
+| `NB_CORS_ORIGINS`          | Comma-separated allowed frontend origins | `http://localhost:5173`       |
 
 Swap models with no code change: `qwen3.5:0.8b` (fast/rough), `qwen3.5:4b` (good),
 `qwen3.5:9b` (best) via `OLLAMA_MODEL`.
@@ -148,11 +148,13 @@ npm run build
 | POST   | `/api/projects/{id}/translate`    | SSE: stream a translation, then autosave |
 | GET    | `/api/projects/{id}/translations` | List saved translations                  |
 | GET    | `/api/translations/{tid}`         | Get one saved translation                |
+| DELETE | `/api/translations/{tid}`         | Delete one saved translation             |
 
 The translate endpoint returns `text/event-stream`: repeated `data: {"content":"..."}` chunks,
-an optional `data: {"info":"..."}` truncation notice, and a terminal
-`data: {"done":true,"translation_id":"..."}` — or `data: {"error":"..."}` on failure (the
-client preserves your input in that case).
+an optional `data: {"info":"..."}` notice (reference truncation, or waiting for a free slot when
+the concurrency cap is saturated), and a terminal `data: {"done":true,"translation_id":"..."}` —
+or `data: {"error":"..."}` on failure, including a busy error when the queue wait exceeds
+`NB_QUEUE_TIMEOUT_SECONDS` (the client preserves your input in that case).
 
 ## Project layout
 

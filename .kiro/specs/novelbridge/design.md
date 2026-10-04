@@ -191,6 +191,7 @@ class StorageService(ABC):
     def save_translation(self, pid: str, source_lang: str, raw_text: str, output_text: str, model_used: str) -> Translation: ...
     def list_translations(self, pid: str) -> list[Translation]: ...
     def get_translation(self, tid: str) -> Translation | None: ...
+    def delete_translation(self, tid: str) -> bool: ...
 ```
 
 The SQLite implementation uses `sqlite3` with foreign keys enabled and `ON DELETE CASCADE` so
@@ -238,6 +239,7 @@ and the raw chapter, each clearly delimited.
 | POST   | `/api/projects/{id}/translate`    | SSE: stream translation of `{raw_text, source_lang}` |
 | GET    | `/api/projects/{id}/translations` | List saved translations                              |
 | GET    | `/api/translations/{tid}`         | Get one saved translation                            |
+| DELETE | `/api/translations/{tid}`         | Delete one saved translation (204 / 404)             |
 | GET    | `/api/health`                     | Liveness + configured engine health                  |
 
 The translate endpoint returns `text/event-stream`. Events: repeated `data: {"content": "..."}`

@@ -119,6 +119,12 @@ def get_translation(tid: str, store: StorageService = Depends(get_storage)):
     return tr
 
 
+@router.delete("/translations/{tid}", status_code=204)
+def delete_translation(tid: str, store: StorageService = Depends(get_storage)):
+    if not store.delete_translation(tid):
+        raise HTTPException(404, "Translation not found")
+
+
 def _require_project(store: StorageService, pid: str) -> None:
     if not store.get_project(pid):
         raise HTTPException(404, "Project not found")

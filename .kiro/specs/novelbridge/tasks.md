@@ -135,10 +135,11 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
   - Added `tests/test_concurrency.py` (mock engine with a delay) asserting the cap serializes
     (overlap==1 at cap 1, overlap==2 at cap 2) and that the queue timeout emits a busy error.
 
-- [ ] 12. Delete saved translations (endpoint)
+- [x] 12. Delete saved translations (endpoint)
   - `delete_translation(tid) -> bool` on `StorageService` + SQLite impl.
-  - `DELETE /api/translations/{tid}` (204 / 404) in `api/projects.py`; add a test.
-  - Update API tables in `tech.md`, `design.md`, and the root `README.md`.
+  - `DELETE /api/translations/{tid}` (204 / 404) in `api/projects.py`; tests added in
+    `test_storage.py` (storage-level) and `test_api.py` (route-level).
+  - Updated API tables in `tech.md`, `design.md`, and the root `README.md`.
 
 - [ ] 13. Fix reference-echo bug + restructure prompts (design + confirm first)
   - Diagnose why attaching a reference makes the model echo it instead of translating the raw

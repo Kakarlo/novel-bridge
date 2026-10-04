@@ -212,3 +212,8 @@ class SQLiteStorage(StorageService):
                 "SELECT * FROM translations WHERE id=?", (tid,)
             ).fetchone()
         return Translation(**dict(row)) if row else None
+
+    def delete_translation(self, tid: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM translations WHERE id=?", (tid,))
+        return cur.rowcount > 0

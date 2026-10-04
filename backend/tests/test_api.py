@@ -123,3 +123,28 @@ def test_translate_unknown_project_404(client):
         json={"raw_text": "x", "source_lang": "zh"},
     )
     assert r.status_code == 404
+
+
+def test_delete_translation(client):
+    pid = _create_project(client)
+    # Produce one saved translation via the streaming endpoint.
+    with client.stream(
+        "POST",
+        f"/api/projects/{pid}/translate",
+        json={"raw_text": "hello", "source_lang": "zh"},
+    ) as resp:
+        body = "".join(resp.iter_text())
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in body.splitlines()
+        if line.startswith("data: ")
+    ]
+    tid = next(e["translation_id"] for e in events if e.get("done"))
+
+    assert len(client.get(f"/api/projects/{pid}/translations").json()) == 1
+    # Delete succeeds with 204, then the row is gone.
+    assert client.delete(f"/api/translations/{tid}").status_code == 204
+    assert len(client.get(f"/api/projects/{pid}/translations").json()) == 0
+    assert client.get(f"/api/translations/{tid}").status_code == 404
+    # Deleting again (missing) returns 404.
+    assert client.delete(f"/api/translations/{tid}").status_code == 404

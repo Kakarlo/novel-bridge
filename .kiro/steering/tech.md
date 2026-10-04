@@ -55,8 +55,8 @@ and client disconnect.
   emits a busy `error` event ("Server busy: too many translations in progress...") and closes
   (HTTP stays 200 for the event-stream).
 - `GET /api/projects/{id}/translations`; `GET /api/translations/{tid}`
-- `DELETE /api/translations/{tid}` — **planned** (204 on success, 404 when missing). Needs a
-  `delete_translation` method on `StorageService` + the SQLite impl.
+- `DELETE /api/translations/{tid}` — 204 on success, 404 when missing. Backed by
+  `delete_translation` on `StorageService` + the SQLite impl.
 - `GET /api/health` — returns `{status, engine, model}`. The frontend polls this for a
   model-status indicator; surface `engine=="mock"` prominently so a leaked `NB_ENGINE=mock`
   is obvious.
@@ -97,8 +97,9 @@ Treat `.kiro/specs/novelbridge/tasks.md` as the live task list; these are the ag
   Queues with a `NB_QUEUE_TIMEOUT_SECONDS` cap (default 30) that emits a busy SSE error rather
   than blocking indefinitely. `num_thread` (already shipped) limits CPU _per request_; this
   limits _parallel_ requests.
-- **Delete saved translations:** `delete_translation` on the storage interface + SQLite impl,
-  and `DELETE /api/translations/{tid}`. The frontend delete UI depends on this landing first.
+- **Delete saved translations (DONE):** `delete_translation` on the storage interface + SQLite
+  impl, and `DELETE /api/translations/{tid}` (204/404). The frontend delete UI (task 17) can
+  now build on it.
 - **Reference-echo bug (prompting):** when a reference chapter is attached, the model tends to
   echo/continue the reference instead of translating the raw input. Fix in `services/prompt.py`
   - `services/context_builder.py`. Direction: restructure into a small set of named, labeled

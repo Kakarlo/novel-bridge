@@ -74,3 +74,6 @@ class StorageService(ABC):
 
     @abstractmethod
     def get_translation(self, tid: str) -> Translation | None: ...
+
+    @abstractmethod
+    def delete_translation(self, tid: str) -> bool: ...

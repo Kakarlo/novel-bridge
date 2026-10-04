@@ -91,6 +91,43 @@ async def test_ollama_engine_parses_ndjson_and_strips_think():
     assert chunks[-1].meta and chunks[-1].meta["eval_count"] == 3
 
 
+async def test_mock_engine_extract_reference_deterministic():
+    engine = MockEngine()
+    content = "Lin Feng climbed Azure Peak. The Sect Elders watched. Dawn broke slowly."
+    r1 = await engine.extract_reference(content, "zh")
+    r2 = await engine.extract_reference(content, "zh")
+    assert r1.summary == r2.summary  # deterministic
+    assert r1.candidate_terms == r2.candidate_terms
+    assert r1.summary.startswith("[MOCK-SUMMARY]")
+    # Capitalized words become candidate terms.
+    assert "Lin" in r1.candidate_terms and "Azure" in r1.candidate_terms
+
+
+def test_parse_extraction_strict_json():
+    from app.engines.ollama_engine import _parse_extraction
+
+    out = _parse_extraction('{"summary": "A calm chapter.", "candidate_terms": ["Lin", "Lin", "Peak"]}')
+    assert out.summary == "A calm chapter."
+    assert out.candidate_terms == ["Lin", "Peak"]  # de-duplicated, order kept
+
+
+def test_parse_extraction_embedded_json():
+    from app.engines.ollama_engine import _parse_extraction
+
+    noisy = 'Here is the result:\n{"summary": "X", "candidate_terms": []}\nThanks!'
+    out = _parse_extraction(noisy)
+    assert out.summary == "X"
+    assert out.candidate_terms == []
+
+
+def test_parse_extraction_non_json_fallback():
+    from app.engines.ollama_engine import _parse_extraction
+
+    out = _parse_extraction("the model just wrote prose, no json here")
+    assert out.summary.startswith("the model just wrote prose")
+    assert out.candidate_terms == []
+
+
 def test_factory_selects_mock():
     s = Settings(nb_engine="mock")
     assert isinstance(get_engine(s), MockEngine)

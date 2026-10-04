@@ -7,9 +7,16 @@ be exercised without a real model.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 
-from app.engines.base import TranslationChunk, TranslationEngine, TranslationRequest
+from app.engines.base import (
+    ReferenceExtraction,
+    TranslationChunk,
+    TranslationEngine,
+    TranslationRequest,
+)
+from app.models import SourceLang
 
 
 class MockEngine(TranslationEngine):
@@ -44,6 +51,21 @@ class MockEngine(TranslationEngine):
             done=True,
             meta={"engine": self.name, "model": "mock"},
         )
+
+    async def extract_reference(
+        self, content: str, source_lang: SourceLang
+    ) -> ReferenceExtraction:
+        """Deterministic, network-free extraction for offline dev and tests.
+
+        Summary = a `[MOCK-SUMMARY]` marker plus the first sentence/line, truncated.
+        Candidate terms = distinct capitalized words (a crude proper-noun heuristic),
+        kept deterministic (sorted, de-duplicated, capped).
+        """
+        text = content.strip()
+        first = re.split(r"(?<=[.!?。！？])\s+|\n", text, maxsplit=1)[0] if text else ""
+        summary = f"[MOCK-SUMMARY] {first[:200]}".strip()
+        terms = sorted({w for w in re.findall(r"\b[A-Z][a-zA-Z]+\b", text)})[:10]
+        return ReferenceExtraction(summary=summary, candidate_terms=terms)
 
     async def health(self) -> bool:
         return True

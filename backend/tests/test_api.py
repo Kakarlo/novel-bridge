@@ -66,6 +66,38 @@ def test_reference_crud_and_validation(client):
     assert client.delete(f"/api/references/{ref_id}").status_code == 204
 
 
+def test_add_reference_extracts_summary(client):
+    pid = _create_project(client)
+    r = client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Lin Feng climbed Azure Peak at dawn."},
+    )
+    assert r.status_code == 201
+    ref = r.json()
+    # The mock engine ran synchronously and populated derived context.
+    assert ref["summary"].startswith("[MOCK-SUMMARY]")
+    assert isinstance(ref["candidate_terms"], list)
+    assert "Lin" in ref["candidate_terms"]
+    # It is persisted and returned by the list endpoint too.
+    listed = client.get(f"/api/projects/{pid}/references").json()[0]
+    assert listed["summary"] == ref["summary"]
+
+
+def test_resummarize_reference(client):
+    pid = _create_project(client)
+    ref_id = client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Dawn broke over the Jade City."},
+    ).json()["id"]
+
+    r = client.post(f"/api/references/{ref_id}/resummarize")
+    assert r.status_code == 200
+    assert r.json()["summary"].startswith("[MOCK-SUMMARY]")
+    assert "Jade" in r.json()["candidate_terms"]
+    # Unknown reference -> 404.
+    assert client.post("/api/references/nope/resummarize").status_code == 404
+
+
 def test_glossary_upsert_and_update(client):
     pid = _create_project(client)
     r = client.post(

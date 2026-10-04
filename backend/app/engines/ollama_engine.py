@@ -13,10 +13,52 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from app.engines.base import TranslationChunk, TranslationEngine, TranslationRequest
-from app.services.prompt import build_messages
+from app.engines.base import (
+    ReferenceExtraction,
+    TranslationChunk,
+    TranslationEngine,
+    TranslationRequest,
+)
+from app.models import SourceLang
+from app.services.prompt import build_extraction_messages, build_translation_messages
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _parse_extraction(raw: str) -> ReferenceExtraction:
+    """Parse an extraction response into a ReferenceExtraction, defensively.
+
+    Tries strict JSON first, then a JSON object embedded in surrounding text, then
+    falls back to using the whole response as the summary with no terms.
+    """
+    candidates: list[str] = []
+    if raw:
+        candidates.append(raw)
+        start, end = raw.find("{"), raw.rfind("}")
+        if 0 <= start < end:
+            candidates.append(raw[start : end + 1])
+
+    for candidate in candidates:
+        try:
+            obj = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        summary = str(obj.get("summary") or "").strip()
+        terms_raw = obj.get("candidate_terms") or []
+        terms: list[str] = []
+        if isinstance(terms_raw, list):
+            seen: set[str] = set()
+            for t in terms_raw:
+                s = str(t).strip()
+                if s and s not in seen:
+                    seen.add(s)
+                    terms.append(s)
+        return ReferenceExtraction(summary=summary, candidate_terms=terms[:20])
+
+    # Fallback: no parseable JSON — keep a trimmed summary, no terms.
+    return ReferenceExtraction(summary=raw[:500].strip(), candidate_terms=[])
 
 
 class OllamaEngine(TranslationEngine):
@@ -27,22 +69,24 @@ class OllamaEngine(TranslationEngine):
         base_url: str,
         model: str,
         num_ctx: int = 16384,
+        num_thread: int = 2,
         think: bool = False,
         timeout: float = 300.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._num_ctx = num_ctx
+        self._num_thread = num_thread
         self._think = think
         self._timeout = timeout
 
     async def stream(self, req: TranslationRequest) -> AsyncIterator[TranslationChunk]:
         payload = {
             "model": req.model or self._model,
-            "messages": build_messages(req),
+            "messages": build_translation_messages(req),
             "stream": True,
             "think": self._think,
-            "options": {"num_ctx": self._num_ctx},
+            "options": {"num_ctx": self._num_ctx, "num_thread": self._num_thread},
         }
 
         # Buffer tails to strip a <think> block if the model emits one anyway.
@@ -88,6 +132,32 @@ class OllamaEngine(TranslationEngine):
                         }
 
         yield TranslationChunk(content="", done=True, meta=meta or {"engine": self.name})
+
+    async def extract_reference(
+        self, content: str, source_lang: SourceLang
+    ) -> ReferenceExtraction:
+        """Distill a reference chapter via a single non-streaming extraction call.
+
+        Asks the model for a JSON object (summary + candidate_terms). Parses it
+        defensively and falls back to a heuristic summary if the model returns
+        non-JSON, so a quirky model response never breaks reference upload.
+        """
+        payload = {
+            "model": self._model,
+            "messages": build_extraction_messages(content, source_lang),
+            "stream": False,
+            "think": self._think,
+            "format": "json",
+            "options": {"num_ctx": self._num_ctx, "num_thread": self._num_thread},
+        }
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(f"{self._base_url}/api/chat", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        raw = (data.get("message") or {}).get("content", "") or ""
+        raw = _THINK_RE.sub("", raw).strip()
+        return _parse_extraction(raw)
 
     async def health(self) -> bool:
         try:

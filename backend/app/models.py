@@ -39,6 +39,12 @@ class ReferenceChapter(BaseModel):
     title: str
     content: str
     created_at: str
+    # Derived at upload time by the engine's reference extraction (task 13). A short
+    # style/plot summary and a list of candidate terms (names/terminology). Both are
+    # optional: extraction may not have run yet (e.g. engine was unreachable) until a
+    # resummarize is triggered.
+    summary: str | None = None
+    candidate_terms: list[str] = Field(default_factory=list)
 
 
 class GlossaryEntry(BaseModel):

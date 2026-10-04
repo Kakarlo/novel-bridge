@@ -8,11 +8,15 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS reference_chapters (
-  id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  title       TEXT NOT NULL,
-  content     TEXT NOT NULL,
-  created_at  TEXT NOT NULL
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  -- Derived at upload time (task 13): a style/plot summary and a JSON array of
+  -- candidate glossary terms. NULL until extraction has run.
+  summary         TEXT,
+  candidate_terms TEXT
 );
 
 CREATE TABLE IF NOT EXISTS glossary_entries (

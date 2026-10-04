@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -35,6 +36,20 @@ class SQLiteStorage(StorageService):
         schema = _SCHEMA_PATH.read_text(encoding="utf-8")
         with self._connect() as conn:
             conn.executescript(schema)
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Additive migrations for DBs created before newer columns existed."""
+        cols = {
+            r["name"]
+            for r in conn.execute("PRAGMA table_info(reference_chapters)").fetchall()
+        }
+        if "summary" not in cols:
+            conn.execute("ALTER TABLE reference_chapters ADD COLUMN summary TEXT")
+        if "candidate_terms" not in cols:
+            conn.execute(
+                "ALTER TABLE reference_chapters ADD COLUMN candidate_terms TEXT"
+            )
 
     # --- projects ---
     def list_projects(self) -> list[Project]:
@@ -66,29 +81,81 @@ class SQLiteStorage(StorageService):
         return cur.rowcount > 0
 
     # --- references ---
+    @staticmethod
+    def _row_to_reference(row: sqlite3.Row) -> ReferenceChapter:
+        data = dict(row)
+        terms_raw = data.pop("candidate_terms", None)
+        try:
+            terms = json.loads(terms_raw) if terms_raw else []
+        except (json.JSONDecodeError, TypeError):
+            terms = []
+        if not isinstance(terms, list):
+            terms = []
+        return ReferenceChapter(candidate_terms=terms, **data)
+
     def list_references(self, pid: str) -> list[ReferenceChapter]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM reference_chapters WHERE project_id=? ORDER BY created_at ASC",
                 (pid,),
             ).fetchall()
-        return [ReferenceChapter(**dict(r)) for r in rows]
+        return [self._row_to_reference(r) for r in rows]
 
-    def add_reference(self, pid: str, title: str, content: str) -> ReferenceChapter:
+    def get_reference(self, ref_id: str) -> ReferenceChapter | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM reference_chapters WHERE id=?", (ref_id,)
+            ).fetchone()
+        return self._row_to_reference(row) if row else None
+
+    def add_reference(
+        self,
+        pid: str,
+        title: str,
+        content: str,
+        summary: str | None = None,
+        candidate_terms: list[str] | None = None,
+    ) -> ReferenceChapter:
         ref = ReferenceChapter(
             id=new_id(),
             project_id=pid,
             title=title,
             content=content,
             created_at=utcnow_iso(),
+            summary=summary,
+            candidate_terms=candidate_terms or [],
         )
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO reference_chapters (id, project_id, title, content, created_at)"
-                " VALUES (?,?,?,?,?)",
-                (ref.id, ref.project_id, ref.title, ref.content, ref.created_at),
+                "INSERT INTO reference_chapters"
+                " (id, project_id, title, content, created_at, summary, candidate_terms)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (
+                    ref.id,
+                    ref.project_id,
+                    ref.title,
+                    ref.content,
+                    ref.created_at,
+                    ref.summary,
+                    json.dumps(ref.candidate_terms, ensure_ascii=False),
+                ),
             )
         return ref
+
+    def set_reference_summary(
+        self, ref_id: str, summary: str, candidate_terms: list[str]
+    ) -> ReferenceChapter | None:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE reference_chapters SET summary=?, candidate_terms=? WHERE id=?",
+                (summary, json.dumps(candidate_terms, ensure_ascii=False), ref_id),
+            )
+            if cur.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM reference_chapters WHERE id=?", (ref_id,)
+            ).fetchone()
+        return self._row_to_reference(row) if row else None
 
     def delete_reference(self, ref_id: str) -> bool:
         with self._connect() as conn:

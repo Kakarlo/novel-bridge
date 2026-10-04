@@ -36,7 +36,22 @@ class StorageService(ABC):
     def list_references(self, pid: str) -> list[ReferenceChapter]: ...
 
     @abstractmethod
-    def add_reference(self, pid: str, title: str, content: str) -> ReferenceChapter: ...
+    def get_reference(self, ref_id: str) -> ReferenceChapter | None: ...
+
+    @abstractmethod
+    def add_reference(
+        self,
+        pid: str,
+        title: str,
+        content: str,
+        summary: str | None = None,
+        candidate_terms: list[str] | None = None,
+    ) -> ReferenceChapter: ...
+
+    @abstractmethod
+    def set_reference_summary(
+        self, ref_id: str, summary: str, candidate_terms: list[str]
+    ) -> ReferenceChapter | None: ...
 
     @abstractmethod
     def delete_reference(self, ref_id: str) -> bool: ...

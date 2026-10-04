@@ -16,7 +16,12 @@ import httpx
 import app.api.translate as translate_mod
 from app.config import Settings, get_settings
 from app.deps import get_storage, get_translation_engine
-from app.engines.base import TranslationChunk, TranslationEngine, TranslationRequest
+from app.engines.base import (
+    ReferenceExtraction,
+    TranslationChunk,
+    TranslationEngine,
+    TranslationRequest,
+)
 from app.main import create_app
 from app.storage.sqlite_store import SQLiteStorage
 
@@ -47,6 +52,9 @@ class _SlowConcurrencyEngine(TranslationEngine):
         self.active -= 1
         self.intervals.append((start, asyncio.get_event_loop().time()))
         yield TranslationChunk(content="", done=True, meta={"model": "mock"})
+
+    async def extract_reference(self, content, source_lang):
+        return ReferenceExtraction(summary="", candidate_terms=[])
 
     async def health(self) -> bool:
         return True

@@ -31,6 +31,7 @@ def get_engine(settings: Settings) -> TranslationEngine:
             base_url=settings.ollama_base_url,
             model=settings.ollama_model,
             num_ctx=settings.ollama_num_ctx,
+            num_thread=settings.ollama_num_thread,
             think=settings.ollama_think,
         )
 

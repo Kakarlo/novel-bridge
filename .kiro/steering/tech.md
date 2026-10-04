@@ -44,7 +44,11 @@ and client disconnect.
 ## HTTP API (contract — do not break without updating the frontend)
 
 - `GET/POST /api/projects`; `GET/DELETE /api/projects/{id}` (GET returns `{project, counts}`)
-- `GET/POST /api/projects/{id}/references`; `DELETE /api/references/{refId}`
+- `GET/POST /api/projects/{id}/references`; `DELETE /api/references/{refId}`.
+  A `ReferenceChapter` now also carries `summary` (string|null) and `candidate_terms`
+  (string[]), derived by the engine at upload time (POST runs extraction synchronously).
+- `POST /api/references/{refId}/resummarize` — re-run extraction for one reference; returns the
+  updated `ReferenceChapter` (200), 404 if missing, 502 if the engine extraction fails.
 - `GET/POST /api/projects/{id}/glossary`; `PUT/DELETE /api/glossary/{entryId}`
   (POST upserts on duplicate `source_term`)
 - `POST /api/projects/{id}/translate` — **SSE** `text/event-stream`. Events:
@@ -100,15 +104,24 @@ Treat `.kiro/specs/novelbridge/tasks.md` as the live task list; these are the ag
 - **Delete saved translations (DONE):** `delete_translation` on the storage interface + SQLite
   impl, and `DELETE /api/translations/{tid}` (204/404). The frontend delete UI (task 17) can
   now build on it.
-- **Reference-echo bug (prompting):** when a reference chapter is attached, the model tends to
-  echo/continue the reference instead of translating the raw input. Fix in `services/prompt.py`
-  - `services/context_builder.py`. Direction: restructure into a small set of named, labeled
-    prompts with a strong goal/output-format preamble — translate ONLY the raw chapter; the
-    reference is for style/consistency and must never be reproduced; output only the translation.
-- **References as summary + candidate glossary:** rather than dumping raw reference text,
-  derive a short summary and candidate glossary entries from a reference. Approach (separate
-  engine call vs. heuristic) and any new storage field/endpoint need a design note + author
-  confirmation before building.
+- **Reference-echo bug (DONE):** attaching a reference used to make the model echo/continue it
+  instead of translating the raw input (reproduced live on `qwen3.5:0.8b`). Root cause: raw
+  reference text was dumped as a large block before a weak trailing instruction, so the model
+  continued it. Fixed by (a) restructuring `services/prompt.py` into named builders
+  (`build_translation_system_prompt`/`build_translation_messages`,
+  `build_extraction_system_prompt`/`build_extraction_messages`) with a strong preamble —
+  translate ONLY the fenced raw chapter, reference is style-only and must never be reproduced,
+  output only the translation — and (b) feeding DERIVED context (summary + candidate terms)
+  instead of raw reference text. Verified live: 4b translates cleanly; 0.8b too after a hardened
+  raw-chapter instruction.
+- **References as summary + candidate glossary (DONE):** references are distilled at upload time
+  via `TranslationEngine.extract_reference(content, source_lang) -> ReferenceExtraction`
+  (`summary`, `candidate_terms`). Mock impl is deterministic/offline; Ollama impl makes one
+  non-streaming `format=json` `/api/chat` call with a defensive JSON parser + heuristic
+  fallback. Stored on `reference_chapters` (`summary`, `candidate_terms` columns; additive
+  migration). `context_builder.build()` now budgets summaries newest-first instead of raw tails.
+  Extraction runs synchronously on POST reference and on `POST /api/references/{refId}/resummarize`;
+  failures degrade gracefully (reference saved with no summary; resummarize later).
 - **Glossary = validation, not entry (English-first matching):** the author's model is that the
   glossary tab validates terms; users often know the English name, not the source term. Explore
   storing English surface forms and fuzzy/alias-matching against model output (English↔source

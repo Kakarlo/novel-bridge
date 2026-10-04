@@ -180,7 +180,12 @@ class StorageService(ABC):
     def delete_project(self, pid: str) -> None: ...
     # references
     def list_references(self, pid: str) -> list[ReferenceChapter]: ...
-    def add_reference(self, pid: str, title: str, content: str) -> ReferenceChapter: ...
+    def get_reference(self, ref_id: str) -> ReferenceChapter | None: ...
+    def add_reference(self, pid: str, title: str, content: str,
+                      summary: str | None = None,
+                      candidate_terms: list[str] | None = None) -> ReferenceChapter: ...
+    def set_reference_summary(self, ref_id: str, summary: str,
+                             candidate_terms: list[str]) -> ReferenceChapter | None: ...
     def delete_reference(self, ref_id: str) -> None: ...
     # glossary
     def list_glossary(self, pid: str) -> list[GlossaryEntry]: ...
@@ -202,45 +207,55 @@ criterion 4).
 
 `context_builder.build(glossary, references, raw_text, budget)` returns the trimmed
 `reference_context` string plus a `truncated: bool` flag. Strategy (Requirement 4, criteria
-1-2; design decision Q9):
+1-2; design decision Q9; revised task 13):
 
 1. Reserve budget for the system prompt, the full glossary, the full raw chapter, and headroom
    for the model's reply.
-2. Fill the remaining budget with the **tail** of the most recently added reference chapter
-   (most relevant for narrative continuity).
-3. If references exceed the remaining budget, truncate from the start and prepend a short
-   `[earlier reference omitted]` note.
+2. Fill the remaining budget with **derived** reference context — each reference's extracted
+   `summary` + `candidate_terms`, newest-first — rather than raw reference text. (Raw text is
+   never fed; dumping it caused the model to echo/continue the reference.)
+3. If the summaries exceed the remaining budget, drop the oldest; if even the newest doesn't
+   fit, truncate it and prepend a short `[earlier reference summaries omitted]` note.
 
 Token counting for the PoC uses a cheap heuristic (character-based estimate) rather than a
 model tokenizer, kept behind a single function so it can be upgraded later.
 
 ### Prompt construction
 
-A system prompt instructs the model to act as a literary translator, honor the glossary as
-authoritative for names/terms, match the tone and style of the reference text, and output only
-the translation. The user message contains the glossary block, the reference-context block,
-and the raw chapter, each clearly delimited.
+Prompts live in `services/prompt.py` as named, composable builders.
+
+- **Translation** (`build_translation_system_prompt` / `build_translation_messages`): the system
+  prompt pins the task — act as a literary translator, honor the glossary as authoritative,
+  use the reference-derived context for style/terminology only and **never reproduce it**, and
+  output only the translation. The user message stacks the glossary, the derived reference
+  context (labeled non-translatable background), and finally the raw chapter fenced between
+  explicit delimiters as the last, most prominent block.
+- **Reference extraction** (`build_extraction_system_prompt` / `build_extraction_messages`):
+  asks for a compact JSON object (`summary`, `candidate_terms`) distilled from a reference
+  chapter. Produced once at upload / on resummarize by `TranslationEngine.extract_reference`,
+  so translations consume the summary instead of raw reference text.
 
 ### HTTP API
 
-| Method | Path                              | Purpose                                              |
-| ------ | --------------------------------- | ---------------------------------------------------- |
-| GET    | `/api/projects`                   | List projects                                        |
-| POST   | `/api/projects`                   | Create project `{name, source_lang?}`                |
-| GET    | `/api/projects/{id}`              | Project detail with counts                           |
-| DELETE | `/api/projects/{id}`              | Delete project (cascade)                             |
-| GET    | `/api/projects/{id}/references`   | List references                                      |
-| POST   | `/api/projects/{id}/references`   | Add reference `{title, content}`                     |
-| DELETE | `/api/references/{refId}`         | Delete reference                                     |
-| GET    | `/api/projects/{id}/glossary`     | List glossary entries                                |
-| POST   | `/api/projects/{id}/glossary`     | Create entry `{source_term, translation, note?}`     |
-| PUT    | `/api/glossary/{entryId}`         | Update entry                                         |
-| DELETE | `/api/glossary/{entryId}`         | Delete entry                                         |
-| POST   | `/api/projects/{id}/translate`    | SSE: stream translation of `{raw_text, source_lang}` |
-| GET    | `/api/projects/{id}/translations` | List saved translations                              |
-| GET    | `/api/translations/{tid}`         | Get one saved translation                            |
-| DELETE | `/api/translations/{tid}`         | Delete one saved translation (204 / 404)             |
-| GET    | `/api/health`                     | Liveness + configured engine health                  |
+| Method | Path                                  | Purpose                                              |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/projects`                       | List projects                                        |
+| POST   | `/api/projects`                       | Create project `{name, source_lang?}`                |
+| GET    | `/api/projects/{id}`                  | Project detail with counts                           |
+| DELETE | `/api/projects/{id}`                  | Delete project (cascade)                             |
+| GET    | `/api/projects/{id}/references`       | List references                                      |
+| POST   | `/api/projects/{id}/references`       | Add reference `{title, content}` (extracts summary)  |
+| POST   | `/api/references/{refId}/resummarize` | Re-run reference extraction (200 / 404 / 502)        |
+| DELETE | `/api/references/{refId}`             | Delete reference                                     |
+| GET    | `/api/projects/{id}/glossary`         | List glossary entries                                |
+| POST   | `/api/projects/{id}/glossary`         | Create entry `{source_term, translation, note?}`     |
+| PUT    | `/api/glossary/{entryId}`             | Update entry                                         |
+| DELETE | `/api/glossary/{entryId}`             | Delete entry                                         |
+| POST   | `/api/projects/{id}/translate`        | SSE: stream translation of `{raw_text, source_lang}` |
+| GET    | `/api/projects/{id}/translations`     | List saved translations                              |
+| GET    | `/api/translations/{tid}`             | Get one saved translation                            |
+| DELETE | `/api/translations/{tid}`             | Delete one saved translation (204 / 404)             |
+| GET    | `/api/health`                         | Liveness + configured engine health                  |
 
 The translate endpoint returns `text/event-stream`. Events: repeated `data: {"content": "..."}`
 chunks, then a terminal `data: {"done": true, "translation_id": "..."}` event. All other
@@ -279,11 +294,13 @@ CREATE TABLE projects (
 );
 
 CREATE TABLE reference_chapters (
-  id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  title       TEXT NOT NULL,
-  content     TEXT NOT NULL,
-  created_at  TEXT NOT NULL
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  summary         TEXT,              -- derived at upload (task 13)
+  candidate_terms TEXT               -- JSON array of candidate glossary terms
 );
 
 CREATE TABLE glossary_entries (

@@ -141,14 +141,23 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
     `test_storage.py` (storage-level) and `test_api.py` (route-level).
   - Updated API tables in `tech.md`, `design.md`, and the root `README.md`.
 
-- [ ] 13. Fix reference-echo bug + restructure prompts (design + confirm first)
-  - Diagnose why attaching a reference makes the model echo it instead of translating the raw
-    input (`services/prompt.py` + `context_builder.py`). Restructure into named prompts with a
-    strong goal/output-format preamble: translate ONLY the raw chapter; reference is for
-    style/consistency and must never be reproduced; output only the translation.
-  - Treat references as a source for a short summary + candidate glossary entries rather than a
-    raw dump. Propose the mechanism (separate engine call vs. heuristic) and any new storage/
-    endpoint; write a short design note and confirm before building. Update tests.
+- [x] 13. Fix reference-echo bug + restructure prompts (design + confirm first)
+  - Diagnosed live (`qwen3.5:0.8b`): raw reference text dumped before a weak trailing
+    instruction made the model continue/echo the reference. Restructured `services/prompt.py`
+    into named builders (`build_translation_*`, `build_extraction_*`) with a strong preamble:
+    translate ONLY the fenced raw chapter; reference is style-only and must never be reproduced;
+    output only the translation.
+  - References distilled at upload (confirmed design: engine call + columns on
+    `reference_chapters` + resummarize endpoint). `TranslationEngine.extract_reference` returns
+    a `ReferenceExtraction(summary, candidate_terms)` — deterministic in the mock, a non-stream
+    `format=json` call in Ollama with a defensive parser. `context_builder.build()` now budgets
+    summaries newest-first instead of raw tails. New `POST /api/references/{refId}/resummarize`;
+    extraction runs synchronously on add (degrades gracefully on engine failure).
+  - Tests: `test_prompt.py` (new), context-builder suite rewritten, mock/ollama extraction +
+    parser tests, api add-reference + resummarize tests. Verified live on 4b (clean) and 0.8b
+    (clean after a hardened raw-chapter instruction). Full suite offline: 44 pass.
+  - Contract change flagged for frontend: `ReferenceChapter` gains `summary` + `candidate_terms`;
+    new resummarize route.
 
 - [ ] 14. English-first glossary matching (design discussion, then maybe implement)
   - Glossary is for validation; users often know the English name, not the source term. Explore

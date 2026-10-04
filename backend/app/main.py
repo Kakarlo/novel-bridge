@@ -5,11 +5,16 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import projects, translate
 from app.config import Settings, get_settings
+from app.engines.factory import get_engine
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+
+    # Fail fast if the selected engine is misconfigured (Requirement 5.6).
+    get_engine(settings)
 
     app = FastAPI(
         title="NovelBridge API",
@@ -32,6 +37,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "engine": settings.nb_engine,
             "model": settings.ollama_model,
         }
+
+    app.include_router(projects.router)
+    app.include_router(translate.router)
 
     return app
 

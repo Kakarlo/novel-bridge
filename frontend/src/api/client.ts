@@ -94,6 +94,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ term }),
     }),
+  // EXPERIMENTAL (gated by NB_SOURCE_TERMS on the backend): deterministic zh/ja source-
+  // language proper nouns for a reference. 404 when the feature is off — callers treat a
+  // thrown 404 as "feature disabled" and simply don't render the group.
+  referenceSourceTerms: (refId: string) => request<string[]>(`/references/${refId}/source-terms`),
 
   // --- glossary ---
   listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),

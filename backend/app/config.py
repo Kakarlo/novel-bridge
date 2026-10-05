@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Context budgeting
     nb_context_budget_tokens: int = 12000
 
+    # EXPERIMENTAL deterministic helpers (default OFF; cheap to remove). Each needs its
+    # own spaCy model (zh/ja) or just the stdlib. See services/source_terms.py and
+    # services/pronoun_check.py.
+    nb_source_terms: bool = False  # zh/ja source-language proper-noun detection
+    nb_pronoun_check: bool = False  # English pronoun-drift DETECTION (flags, never rewrites)
+
     # Storage
     nb_db_path: str = "./novelbridge.db"
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.config import Settings, get_settings
 from app.deps import get_storage, get_translation_engine
 from app.engines.base import TranslationEngine
 from app.models import (
@@ -20,6 +21,8 @@ from app.models import (
     Translation,
 )
 from app.services.noun_extract import extract_proper_nouns
+from app.services.pronoun_check import PronounFlag, find_pronoun_drift
+from app.services.source_terms import extract_source_terms
 from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
@@ -162,6 +165,25 @@ def resolve_reference_term(
     return updated
 
 
+@router.get("/references/{ref_id}/source-terms", response_model=list[str])
+def reference_source_terms(
+    ref_id: str,
+    store: StorageService = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+):
+    """EXPERIMENTAL (gated by NB_SOURCE_TERMS): deterministic zh/ja proper-noun detection
+    over the reference's source text. 404 if the feature is off or the reference is missing.
+    Returns [] if the relevant spaCy model isn't installed."""
+    if not settings.nb_source_terms:
+        raise HTTPException(404, "Source-term detection is disabled")
+    ref = store.get_reference(ref_id)
+    if not ref:
+        raise HTTPException(404, "Reference not found")
+    project = store.get_project(ref.project_id)
+    lang = (project.source_lang if project else None) or "zh"
+    return extract_source_terms(ref.content, lang)
+
+
 @router.delete("/references/{ref_id}", status_code=204)
 def delete_reference(ref_id: str, store: StorageService = Depends(get_storage)):
     if not store.delete_reference(ref_id):
@@ -262,6 +284,24 @@ def get_translation_matches(tid: str, store: StorageService = Depends(get_storag
         raise HTTPException(404, "Translation not found")
     glossary = store.list_glossary(tr.project_id)
     return find_occurrences(tr.output_text, glossary)
+
+
+@router.get("/translations/{tid}/pronoun-drift", response_model=list[PronounFlag])
+def get_translation_pronoun_drift(
+    tid: str,
+    store: StorageService = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+):
+    """EXPERIMENTAL (gated by NB_PRONOUN_CHECK): flag likely gender/pronoun mismatches for
+    gendered characters in a saved translation. Detection only — never rewrites. 404 if the
+    feature is off or the translation is missing."""
+    if not settings.nb_pronoun_check:
+        raise HTTPException(404, "Pronoun-drift detection is disabled")
+    tr = store.get_translation(tid)
+    if not tr:
+        raise HTTPException(404, "Translation not found")
+    glossary = store.list_glossary(tr.project_id)
+    return find_pronoun_drift(tr.output_text, glossary)
 
 
 @router.delete("/translations/{tid}", status_code=204)

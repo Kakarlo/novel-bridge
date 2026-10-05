@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HistoryPanel } from "@/components/history-panel";
 import { TranslationReview } from "@/components/translation-review";
+import { ModelPicker } from "@/components/model-picker";
 import { langLabel } from "@/lib/format";
 
 type Status = "idle" | "streaming" | "done" | "error" | "viewing";
@@ -288,6 +289,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           <StatusPill status={status} />
         </div>
         <div className="flex items-center gap-2">
+          <ModelPicker />
           <div className="flex items-center gap-1.5">
             <Languages className="size-4 text-muted-foreground" />
             <Select value={lang} onValueChange={(v) => setLang(v as SourceLang)} disabled={streaming}>

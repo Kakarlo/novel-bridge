@@ -135,6 +135,37 @@ export interface TranslateRequest {
   review_terms?: boolean;
 }
 
+// GET /api/models — the current single-provider (local Ollama) contract. `models` is empty
+// when the engine is unreachable (never errors); `current` is the configured default model.
+// NOTE: this is expected to grow a provider dimension (see tech.md "Bring-your-own LLM API
+// token" → `{ providers: [...] }`); the picker is already modeled provider → model so that
+// future shape is a data change, not a UI rewrite.
+export interface ModelsResponse {
+  models: string[];
+  current: string;
+}
+
+// Provider-aware view model the picker renders. Today the flat ModelsResponse is adapted into
+// a single synthetic "Local (Ollama)" provider; cloud providers slot in as more entries.
+export interface ModelProvider {
+  id: string;
+  label: string;
+  models: string[];
+  // The engine responded with models. Distinct from `needs_key` so an empty list can mean
+  // either "unreachable" or (future cloud) "no API key configured".
+  reachable: boolean;
+  // Future cloud providers: a key must be configured before models are usable. Always false
+  // for the local engine.
+  needs_key: boolean;
+}
+
+// A selected engine target. Modeled as a {provider, model} pair even though provider is fixed
+// to the local engine today, so wiring the per-request override later is a data change.
+export interface ModelSelection {
+  provider: string;
+  model: string;
+}
+
 // --- SSE event shapes (POST /api/projects/{id}/translate) ---
 // The stream emits one of these per `data:` line.
 

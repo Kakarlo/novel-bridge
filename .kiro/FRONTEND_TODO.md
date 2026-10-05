@@ -129,7 +129,7 @@ Backend-adjacent copy/display fixes in `references-tab.tsx` (no backend change n
 
 ---
 
-## 5. Model picker — backend listing endpoint is ready (NEW, additive)
+## 5. Model picker — backend listing endpoint is ready (NEW, additive) — DONE (read-only, provider-aware; per-request switch → BACKEND_TODO #2)
 
 **Why:** let the user pick which model translates, instead of being stuck on the configured
 default. The engine already accepts a per-request model (`TranslationRequest.model`); the

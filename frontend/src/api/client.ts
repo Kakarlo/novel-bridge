@@ -4,6 +4,7 @@
 import { streamSse } from "./sse";
 import type {
   AlignmentCandidate,
+  ModelsResponse,
   GlossaryCreate,
   GlossaryEntry,
   GlossaryStatus,
@@ -66,6 +67,11 @@ async function errorMessage(res: Response): Promise<string> {
 export const api = {
   // --- health ---
   health: () => request<{ status: string; reachable: boolean; engine: string; model: string }>("/health"),
+
+  // --- models ---
+  // GET /api/models → { models, current }. Degrades to an empty `models` list (never errors)
+  // when the engine is unreachable; the picker treats empty as "unavailable".
+  listModels: () => request<ModelsResponse>("/models"),
 
   // --- projects ---
   listProjects: () => request<Project[]>("/projects"),

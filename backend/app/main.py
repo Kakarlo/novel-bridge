@@ -17,11 +17,19 @@ from app.engines.factory import get_engine
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
-    # Surface our own INFO logs (e.g. the translate context-occupancy line) under uvicorn,
-    # which otherwise leaves app loggers at the root default of WARNING. Scoped to the "app"
-    # namespace so we don't flip logging on for third-party libraries. Propagates to
-    # uvicorn's root handler, so no handler is attached here.
-    logging.getLogger("app").setLevel(logging.INFO)
+    # Surface our own INFO logs (e.g. the translate context-occupancy line) under uvicorn.
+    # Uvicorn configures logging via dictConfig with NO handler on the root logger, so an
+    # app logger left to propagate reaches a handler-less root and prints nothing — setting
+    # the level alone isn't enough, it needs its own handler. Attach one directly to the
+    # "app" namespace (uvicorn-style format so it blends in) and stop propagation so it never
+    # double-logs if the root later gains a handler. Idempotent across repeated create_app().
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(logging.INFO)
+    if not app_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+        app_logger.addHandler(handler)
+    app_logger.propagate = False
 
     # Fail fast if the selected engine is misconfigured (Requirement 5.6).
     get_engine(settings)

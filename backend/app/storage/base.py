@@ -64,6 +64,11 @@ class StorageService(ABC):
     ) -> ReferenceChapter | None: ...
 
     @abstractmethod
+    def remove_reference_term(
+        self, ref_id: str, term: str
+    ) -> ReferenceChapter | None: ...
+
+    @abstractmethod
     def delete_reference(self, ref_id: str) -> bool: ...
 
     # --- glossary (English-first, task 14) ---

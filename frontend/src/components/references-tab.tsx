@@ -375,7 +375,12 @@ function ReferenceReader({
       <ScrollArea className="min-h-0 flex-1">
         {/* Wide reading column for desktop (~75-80% of available width). */}
         <div className="mx-auto w-[78%] min-w-0 max-w-5xl px-6 py-8">
-          <DerivedContext projectId={projectId} reference={reference} onGlossaryChanged={onGlossaryChanged} />
+          <DerivedContext
+            projectId={projectId}
+            reference={reference}
+            onGlossaryChanged={onGlossaryChanged}
+            onReferenceUpdated={onUpdated}
+          />
           <article className="mt-6 border-t pt-6 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
             {reference.content}
           </article>
@@ -421,13 +426,17 @@ function DerivedContext({
   projectId,
   reference,
   onGlossaryChanged,
+  onReferenceUpdated,
 }: {
   projectId: string;
   reference: ReferenceChapter;
   onGlossaryChanged?: () => void;
+  // Called with the updated reference after a term is resolved out of its pools.
+  onReferenceUpdated: (ref: ReferenceChapter) => void;
 }) {
-  // Surface forms already in the glossary (case-insensitive), any status. A term that's
-  // been promoted OR rejected lives here, so either action hides the chip persistently.
+  // Secondary filter: hide a detected name that already matches a glossary entry (e.g. one
+  // added directly in the Glossary tab). Resolved suggestions are removed from the pools
+  // server-side, so this is just belt-and-suspenders for names that pre-exist in glossary.
   const [inGlossary, setInGlossary] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -467,36 +476,27 @@ function DerivedContext({
     );
   }
 
-  async function promote(term: string) {
+  // Resolve a suggestion into the glossary (promote=candidate / reject=rejected) and remove
+  // it from the reference's pools so it leaves the suggestion chips for good. Deleting it
+  // from the glossary later won't bring it back; use "Redetect names" to resurface names.
+  async function resolve(term: string, status: "candidate" | "rejected") {
     const en = term.trim();
     if (!en) return;
     try {
-      // English-first: the term IS the English name. Add as a candidate to approve later.
-      await api.createGlossary(projectId, { surface_form: en, status: "candidate" });
-      // Hide the chip immediately; tell the workspace so the glossary tab + counts update.
-      setInGlossary((prev) => new Set(prev).add(en.toLowerCase()));
+      await api.createGlossary(projectId, { surface_form: en, status });
+      const updated = await api.resolveReferenceTerm(reference.id, en);
+      onReferenceUpdated(updated);
       onGlossaryChanged?.();
-      toast.success(`Added “${en}” to the glossary`);
+      toast.success(
+        status === "candidate" ? `Added “${en}” to the glossary` : `Rejected “${en}” (restore it from the Glossary tab)`
+      );
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Could not add to glossary");
+      toast.error(e instanceof ApiError ? e.message : "Could not resolve term");
     }
   }
 
-  async function reject(term: string) {
-    const en = term.trim();
-    if (!en) return;
-    try {
-      // Option B: rejecting a suggestion is a persistent soft-delete — a glossary entry
-      // with status 'rejected'. It's remembered (won't resurface), stays out of the
-      // prompt and the term count, and can be restored from the Glossary tab.
-      await api.createGlossary(projectId, { surface_form: en, status: "rejected" });
-      setInGlossary((prev) => new Set(prev).add(en.toLowerCase()));
-      onGlossaryChanged?.();
-      toast.success(`Rejected “${en}” (restore it from the Glossary tab)`);
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Could not reject term");
-    }
-  }
+  const promote = (term: string) => resolve(term, "candidate");
+  const reject = (term: string) => resolve(term, "rejected");
 
   // Each chip: click the name to add it to the glossary; click the ✕ to reject it (a
   // persistent soft-delete, restorable from the Glossary tab).

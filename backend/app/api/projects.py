@@ -15,6 +15,7 @@ from app.models import (
     ProjectCreate,
     ReferenceChapter,
     ReferenceCreate,
+    ResolveTermBody,
     TermMatch,
     Translation,
 )
@@ -139,7 +140,23 @@ def redetect_reference_names(
     if not ref:
         raise HTTPException(404, "Reference not found")
     detected_names = extract_proper_nouns(ref.content)
+    # Don't resurface names the user has already resolved into the glossary (promoted or
+    # rejected) — those have left the suggestion pool on purpose.
+    in_glossary = {e.surface_form.casefold() for e in store.list_glossary(ref.project_id)}
+    detected_names = [n for n in detected_names if n.casefold() not in in_glossary]
     updated = store.set_reference_detected_names(ref_id, detected_names)
+    if not updated:
+        raise HTTPException(404, "Reference not found")
+    return updated
+
+
+@router.post("/references/{ref_id}/resolve-term", response_model=ReferenceChapter)
+def resolve_reference_term(
+    ref_id: str, body: ResolveTermBody, store: StorageService = Depends(get_storage)
+):
+    """Remove a resolved suggestion (promoted or rejected) from a reference's suggestion
+    pool, so it won't reappear as a chip and redetect won't resurface it."""
+    updated = store.remove_reference_term(ref_id, body.term)
     if not updated:
         raise HTTPException(404, "Reference not found")
     return updated

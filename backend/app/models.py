@@ -182,6 +182,19 @@ class GlossaryStatusUpdate(BaseModel):
     status: GlossaryStatus
 
 
+class ResolveTermBody(BaseModel):
+    """Remove one resolved suggestion (promoted/rejected) from a reference's pools."""
+
+    term: str
+
+    @field_validator("term")
+    @classmethod
+    def term_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Term must not be empty.")
+        return v.strip()
+
+
 class TranslateRequest(BaseModel):
     raw_text: str = Field(min_length=1)
     source_lang: SourceLang

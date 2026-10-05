@@ -87,6 +87,13 @@ export const api = {
   // Re-run ONLY the offline name detector (no AI) to refresh detected_names quickly.
   redetectReferenceNames: (refId: string) =>
     request<ReferenceChapter>(`/references/${refId}/redetect`, { method: "POST" }),
+  // Remove a resolved suggestion (after promote/reject) from a reference's pools so it
+  // leaves the chips and won't be resurfaced by redetect.
+  resolveReferenceTerm: (refId: string, term: string) =>
+    request<ReferenceChapter>(`/references/${refId}/resolve-term`, {
+      method: "POST",
+      body: JSON.stringify({ term }),
+    }),
 
   // --- glossary ---
   listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),

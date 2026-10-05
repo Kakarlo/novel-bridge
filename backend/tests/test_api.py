@@ -375,3 +375,41 @@ def test_redetect_reference_names_only(client):
     assert isinstance(body["detected_names"], list)
     # Unknown reference -> 404.
     assert client.post("/api/references/nope/redetect").status_code == 404
+
+
+def test_resolve_term_removes_from_reference_pools(client):
+    """Resolving a suggestion drops it from detected_names AND candidate_terms, so it
+    won't reappear as a chip."""
+    pid = _create_project(client)
+    ref = client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Lin Feng met Lin Feng again in Beijing."},
+    ).json()
+    assert "Beijing" in ref["detected_names"]
+    # Resolve "Beijing" out of the pool.
+    r = client.post(
+        f"/api/references/{ref['id']}/resolve-term", json={"term": "beijing"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "Beijing" not in body["detected_names"]
+    assert all(t.casefold() != "beijing" for t in body["candidate_terms"])
+    # Unknown reference -> 404.
+    assert (
+        client.post("/api/references/nope/resolve-term", json={"term": "x"}).status_code
+        == 404
+    )
+
+
+def test_redetect_excludes_glossary_terms(client):
+    """Redetect must not resurface names the user already resolved into the glossary."""
+    pid = _create_project(client)
+    ref = client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Lin Feng traveled to Beijing with Lin Feng."},
+    ).json()
+    # Promote-equivalent: the name is now in the glossary.
+    client.post(f"/api/projects/{pid}/glossary", json={"surface_form": "Beijing"})
+    r = client.post(f"/api/references/{ref['id']}/redetect")
+    assert r.status_code == 200
+    assert "Beijing" not in r.json()["detected_names"]

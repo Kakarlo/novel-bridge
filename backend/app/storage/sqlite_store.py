@@ -204,6 +204,37 @@ class SQLiteStorage(StorageService):
             ).fetchone()
         return self._row_to_reference(row) if row else None
 
+    def remove_reference_term(
+        self, ref_id: str, term: str
+    ) -> ReferenceChapter | None:
+        """Drop a term (case-insensitive) from a reference's detected_names AND
+        candidate_terms. Called when a suggestion is resolved (promoted or rejected) so it
+        leaves the reference's suggestion pool for good — it now lives in the glossary.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM reference_chapters WHERE id=?", (ref_id,)
+            ).fetchone()
+            if not row:
+                return None
+            ref = self._row_to_reference(row)
+            low = term.casefold()
+            detected = [t for t in ref.detected_names if t.casefold() != low]
+            candidates = [t for t in ref.candidate_terms if t.casefold() != low]
+            conn.execute(
+                "UPDATE reference_chapters SET detected_names=?, candidate_terms=?"
+                " WHERE id=?",
+                (
+                    json.dumps(detected, ensure_ascii=False),
+                    json.dumps(candidates, ensure_ascii=False),
+                    ref_id,
+                ),
+            )
+            updated = conn.execute(
+                "SELECT * FROM reference_chapters WHERE id=?", (ref_id,)
+            ).fetchone()
+        return self._row_to_reference(updated) if updated else None
+
     def delete_reference(self, ref_id: str) -> bool:
         with self._connect() as conn:
             cur = conn.execute(

@@ -165,25 +165,6 @@ def resolve_reference_term(
     return updated
 
 
-@router.get("/references/{ref_id}/source-terms", response_model=list[str])
-def reference_source_terms(
-    ref_id: str,
-    store: StorageService = Depends(get_storage),
-    settings: Settings = Depends(get_settings),
-):
-    """EXPERIMENTAL (gated by NB_SOURCE_TERMS): deterministic zh/ja proper-noun detection
-    over the reference's source text. 404 if the feature is off or the reference is missing.
-    Returns [] if the relevant spaCy model isn't installed."""
-    if not settings.nb_source_terms:
-        raise HTTPException(404, "Source-term detection is disabled")
-    ref = store.get_reference(ref_id)
-    if not ref:
-        raise HTTPException(404, "Reference not found")
-    project = store.get_project(ref.project_id)
-    lang = (project.source_lang if project else None) or "zh"
-    return extract_source_terms(ref.content, lang)
-
-
 @router.delete("/references/{ref_id}", status_code=204)
 def delete_reference(ref_id: str, store: StorageService = Depends(get_storage)):
     if not store.delete_reference(ref_id):
@@ -284,6 +265,26 @@ def get_translation_matches(tid: str, store: StorageService = Depends(get_storag
         raise HTTPException(404, "Translation not found")
     glossary = store.list_glossary(tr.project_id)
     return find_occurrences(tr.output_text, glossary)
+
+
+@router.get("/translations/{tid}/source-terms", response_model=list[str])
+def get_translation_source_terms(
+    tid: str,
+    store: StorageService = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+):
+    """EXPERIMENTAL (gated by NB_SOURCE_TERMS): deterministic zh/ja proper-noun detection
+    over a saved translation's SOURCE chapter (``raw_text``).
+
+    A reference is English, so source-term NER belongs here, where real source text exists —
+    not on references. 404 if the feature is off or the translation is missing. Returns [] if
+    the relevant spaCy model isn't installed (treat empty as "unavailable", not "none found")."""
+    if not settings.nb_source_terms:
+        raise HTTPException(404, "Source-term detection is disabled")
+    tr = store.get_translation(tid)
+    if not tr:
+        raise HTTPException(404, "Translation not found")
+    return extract_source_terms(tr.raw_text, tr.source_lang)
 
 
 @router.get("/translations/{tid}/pronoun-drift", response_model=list[PronounFlag])

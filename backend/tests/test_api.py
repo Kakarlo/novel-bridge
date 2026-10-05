@@ -440,12 +440,7 @@ def test_experimental_endpoints_gated_off_by_default(tmp_path):
     )
     with _client_with(settings) as client:
         pid = _create_project(client)
-        ref = client.post(
-            f"/api/projects/{pid}/references",
-            json={"title": "Ch1", "content": "Lin Feng went to Beijing."},
-        ).json()
-        assert client.get(f"/api/references/{ref['id']}/source-terms").status_code == 404
-        # A saved translation to test pronoun-drift gating.
+        # Save a translation; both experimental endpoints hang off a saved translation.
         with client.stream(
             "POST",
             f"/api/projects/{pid}/translate",
@@ -458,6 +453,7 @@ def test_experimental_endpoints_gated_off_by_default(tmp_path):
                     if payload.get("done"):
                         tid = payload["translation_id"]
         assert tid
+        assert client.get(f"/api/translations/{tid}/source-terms").status_code == 404
         assert client.get(f"/api/translations/{tid}/pronoun-drift").status_code == 404
 
 
@@ -496,7 +492,11 @@ def test_pronoun_drift_endpoint_when_enabled(tmp_path):
 
 
 def test_source_terms_endpoint_when_enabled(tmp_path):
-    """With NB_SOURCE_TERMS on, the endpoint returns a list (empty if model absent)."""
+    """With NB_SOURCE_TERMS on, the endpoint returns a list (empty if model absent).
+
+    Source-term NER runs over a saved translation's SOURCE chapter (``raw_text``), not a
+    reference (references are English). So translate a Chinese raw chapter first, then query.
+    """
     settings = Settings(
         nb_engine="mock",
         nb_db_path=str(tmp_path / "src.db"),
@@ -504,10 +504,20 @@ def test_source_terms_endpoint_when_enabled(tmp_path):
     )
     with _client_with(settings) as c:
         pid = c.post("/api/projects", json={"name": "S", "source_lang": "zh"}).json()["id"]
-        ref = c.post(
-            f"/api/projects/{pid}/references",
-            json={"title": "Ch1", "content": "林风走向北京。", "extract_summary": False},
-        ).json()
-        r = c.get(f"/api/references/{ref['id']}/source-terms")
+        with c.stream(
+            "POST",
+            f"/api/projects/{pid}/translate",
+            json={"raw_text": "林风走向北京。北京很大。", "source_lang": "zh"},
+        ) as s:
+            tid = None
+            for line in s.iter_lines():
+                if line and line.startswith("data:"):
+                    payload = json.loads(line[5:])
+                    if payload.get("done"):
+                        tid = payload["translation_id"]
+        assert tid
+        r = c.get(f"/api/translations/{tid}/source-terms")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
+        # Missing/unknown translation -> 404 (not an empty list).
+        assert c.get("/api/translations/does-not-exist/source-terms").status_code == 404

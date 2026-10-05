@@ -372,6 +372,12 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           {/* Source pane */}
           <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
             <PaneHeader label={`Source · ${langLabel(lang)}`} meta={`${raw.length.toLocaleString()} chars`} />
+            {/* Experimental review surface — lives on the source side (the user reads the
+                English pane, so it won't cover the translation). Only for a persisted
+                translation; 404/empty from the gated endpoints renders nothing. */}
+            {viewingId && (status === "viewing" || status === "done") && (
+              <TranslationReview projectId={projectId} translationId={viewingId} onGlossaryChanged={onSaved} />
+            )}
             <Textarea
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
@@ -385,11 +391,6 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           {/* Output pane */}
           <section className="relative flex min-h-0 flex-col bg-muted/20">
             <PaneHeader label="English" meta={outputMeta(status, output)} />
-            {/* Experimental review surface — only for a persisted translation (has an id and
-                not mid-stream). 404/empty from the gated endpoints renders nothing. */}
-            {viewingId && (status === "viewing" || status === "done") && (
-              <TranslationReview projectId={projectId} translationId={viewingId} onGlossaryChanged={onSaved} />
-            )}
             {streaming && !atBottom && (
               <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center">
                 <Button

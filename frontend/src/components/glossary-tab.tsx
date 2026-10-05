@@ -96,6 +96,7 @@ export function GlossaryTab({
   async function handleUpdate(id: string, draft: EditorDraft) {
     const entry = await api.updateGlossary(id, {
       surface_form: draft.surfaceForm,
+      source_term: draft.sourceTerm || null,
       category: draft.category,
       gender: draft.category === "character" ? draft.gender : null,
       note: draft.note || null,
@@ -420,7 +421,6 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
             onChange={(e) => setSourceTerm(e.target.value)}
             placeholder="源术语 / 用語"
             className="h-8"
-            disabled={mode === "edit"}
             aria-label="Source term (optional)"
           />
         </div>
@@ -464,10 +464,6 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
         className="h-8 text-xs"
         aria-label="Note"
       />
-
-      {mode === "edit" && (
-        <p className="text-[11px] text-muted-foreground">Source term is fixed; create a new entry to change it.</p>
-      )}
 
       <div className="flex justify-end gap-1.5">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel} data-icon="inline-start">

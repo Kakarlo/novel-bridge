@@ -4,6 +4,19 @@ Read this first, then start with Issue 1. Steering files (`.kiro/steering/produc
 `tech.md`, `frontend-plan.md`) and the spec (`.kiro/specs/novelbridge/`) are the source of
 truth; this note is the short, current to-do.
 
+## Working style for this session
+
+Activate the `ponytail` steering file (`.kiro/steering/ponytail.md`, inclusion: manual) for
+this bug-fix round — pull it in via the context tool / disclose_context at the start. It fits
+this work: root-cause bug fixes (fix the shared function once, not per caller), stdlib/existing
+patterns before new code, deletion over addition, one runnable check behind non-trivial logic.
+It does NOT veto Issue 1's spaCy dependency: stdlib regex was already tried and FAILED to judge
+grammatical role (that is Issue 1), so spaCy is the ladder's "an installed/available dependency
+solves it" rung done correctly — a ~8MB offline NER instead of hand-rolling one. Still confirm
+the install with the author before committing the dep. Note: this project's engine/storage
+interfaces are intentional, author-requested abstractions (see `tech.md`) — keep them; the
+"no abstractions" rule applies to NEW unrequested ones.
+
 ## State at handoff
 
 - Branch `main`, clean tree, HEAD `05f54cd`. Local only, no remote. One commit per task.
@@ -31,6 +44,7 @@ The regex extractor (`backend/app/services/noun_extract.py`) still leaks "I'm", 
 grammatical role, so this approach has hit its ceiling.
 
 **Decision (confirmed with author): adopt spaCy NER.** Research notes:
+
 - Use **NER entity spans** (PERSON/ORG/GPE/FAC/LOC/NORP), NOT raw POS `PROPN` tags — PROPN
   misclassifies ("Thursday" like "John") and spaCy's own team says PROPN-vs-NOUN is the
   tagger's weakest spot. NER yields clean multiword spans ("Li Changshou") and naturally drops
@@ -41,6 +55,7 @@ grammatical role, so this approach has hit its ceiling.
   xianxia jargon ("Qi Refinement", "Primordial World"). That's fine — pair it with the LLM.
 
 **Plan:**
+
 1. Add `spacy` to `backend/requirements.txt`; install `en_core_web_sm`
    (`python -m spacy download en_core_web_sm`). **Confirm the install with the author before
    committing the dep** (new runtime dependency + model download).
@@ -70,13 +85,14 @@ surfaced in the frontend `references-tab.tsx` DerivedContext as the "Detected na
 (`references-tab.tsx`) fires the add and the component stays mounted across tab switches
 (tabs are `forceMount` now), so it "finishes in the background" — which is actually fine.
 Decide the cleaner model and make it intentional:
+
 - Option A (recommended, simplest): keep it synchronous, but show a clear per-reference
   "Summarizing…" pending state in the UI while the POST is in flight, and a `beforeunload`
   guard if a summarize/add is in flight (mirror the translate guardrail in
   `hooks/use-active-stream.ts` — maybe generalize that store to "work in progress").
 - Option B: make extraction a background step after the reference is saved (save immediately,
   summarize async, poll/refetch). More moving parts; only if A feels wrong.
-Confirm with the author which model before building.
+  Confirm with the author which model before building.
 
 ## Issue 3 — chip dismissal visual flash (all tags show, then dismissed ones vanish)
 

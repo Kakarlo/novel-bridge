@@ -454,6 +454,7 @@ def test_experimental_endpoints_gated_off_by_default(tmp_path):
                         tid = payload["translation_id"]
         assert tid
         assert client.get(f"/api/translations/{tid}/source-terms").status_code == 404
+        assert client.get(f"/api/translations/{tid}/term-alignment").status_code == 404
         assert client.get(f"/api/translations/{tid}/pronoun-drift").status_code == 404
 
 
@@ -521,3 +522,34 @@ def test_source_terms_endpoint_when_enabled(tmp_path):
         assert isinstance(r.json(), list)
         # Missing/unknown translation -> 404 (not an empty list).
         assert c.get("/api/translations/does-not-exist/source-terms").status_code == 404
+
+
+def test_term_alignment_endpoint_when_enabled(tmp_path):
+    """With NB_SOURCE_TERMS on, /term-alignment returns a proposal list (empty if the
+    source-term model is absent). Gating + shape only; the alignment logic is unit-tested
+    offline in test_term_align.py (this path depends on the zh spaCy model being installed)."""
+    settings = Settings(
+        nb_engine="mock",
+        nb_db_path=str(tmp_path / "align.db"),
+        nb_source_terms=True,
+    )
+    with _client_with(settings) as c:
+        pid = c.post("/api/projects", json={"name": "S", "source_lang": "zh"}).json()["id"]
+        # An unpaired English glossary name to align against.
+        c.post(f"/api/projects/{pid}/glossary", json={"surface_form": "Lin Feng"})
+        with c.stream(
+            "POST",
+            f"/api/projects/{pid}/translate",
+            json={"raw_text": "林风走向北京。北京很大。", "source_lang": "zh"},
+        ) as s:
+            tid = None
+            for line in s.iter_lines():
+                if line and line.startswith("data:"):
+                    payload = json.loads(line[5:])
+                    if payload.get("done"):
+                        tid = payload["translation_id"]
+        assert tid
+        r = c.get(f"/api/translations/{tid}/term-alignment")
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
+        assert c.get("/api/translations/does-not-exist/term-alignment").status_code == 404

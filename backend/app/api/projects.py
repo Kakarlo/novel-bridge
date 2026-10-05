@@ -16,6 +16,7 @@ from app.models import (
     ProjectCreate,
     ReferenceChapter,
     ReferenceCreate,
+    AlignmentCandidate,
     ResolveTermBody,
     TermMatch,
     Translation,
@@ -24,6 +25,7 @@ from app.services.chapter_number import parse_chapter_number
 from app.services.noun_extract import extract_proper_nouns
 from app.services.pronoun_check import PronounFlag, find_pronoun_drift
 from app.services.source_terms import extract_source_terms
+from app.services.term_align import align_terms
 from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
@@ -293,6 +295,31 @@ def get_translation_source_terms(
     if not tr:
         raise HTTPException(404, "Translation not found")
     return extract_source_terms(tr.raw_text, tr.source_lang)
+
+
+@router.get("/translations/{tid}/term-alignment", response_model=list[AlignmentCandidate])
+def get_translation_term_alignment(
+    tid: str,
+    store: StorageService = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
+):
+    """EXPERIMENTAL (gated by NB_SOURCE_TERMS): propose source-term -> English-name pairings
+    for a saved translation, deterministically (no LLM).
+
+    Correlates source proper nouns in the translation's source chapter (``raw_text``) with the
+    project's UNPAIRED English glossary names found in its ``output_text`` — by appearance
+    order + frequency, not string similarity. A PROPOSAL list for the user to confirm; the
+    confirm step sets ``source_term`` via the normal glossary write. 404 if the feature is off
+    or the translation is missing; [] if the source-term model isn't installed or nothing
+    aligns."""
+    if not settings.nb_source_terms:
+        raise HTTPException(404, "Source-term detection is disabled")
+    tr = store.get_translation(tid)
+    if not tr:
+        raise HTTPException(404, "Translation not found")
+    source_terms = extract_source_terms(tr.raw_text, tr.source_lang)
+    glossary = store.list_glossary(tr.project_id)
+    return align_terms(source_terms, glossary, tr.raw_text, tr.output_text)
 
 
 @router.get("/translations/{tid}/pronoun-drift", response_model=list[PronounFlag])

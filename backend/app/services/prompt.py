@@ -182,6 +182,13 @@ EXTRACTION_SYSTEM_PROMPT = (
 
 
 def build_extraction_system_prompt() -> str:
+    # ponytail: REVISIT whether the AI `candidate_terms` extraction still earns its keep.
+    # Its unique value was lowercase genre jargon that NER misses — but the deterministic
+    # domain-vocab union (services/noun_extract.py + app/data/*.txt) now backfills much of
+    # that offline, and spaCy NER handles proper names. If measurement shows candidate_terms
+    # rarely adds a term beyond NER + domain vocab, drop the terms half of this extraction and
+    # keep only the summary (one fewer thing for a weak local model to get wrong). Needs a
+    # before/after comparison on real chapters first — a measurement call, not a now-change.
     return EXTRACTION_SYSTEM_PROMPT
 
 

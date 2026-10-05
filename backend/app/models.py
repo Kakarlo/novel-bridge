@@ -110,6 +110,28 @@ class TermMatch(BaseModel):
     snippets: list[str] = Field(default_factory=list)
 
 
+class AlignmentCandidate(BaseModel):
+    """A proposed source-term -> English-name pairing (deterministic, no LLM).
+
+    Produced by ``services.term_align.align_terms`` by correlating where/how often a source
+    proper noun appears in the source chapter with where/how often an English name appears in
+    the translation — same story told in the same order, so matching ROLE (appearance rank +
+    frequency), NOT string similarity or a transliteration. A PROPOSAL only: the user confirms
+    a pair, which sets ``source_term`` on the glossary entry via the normal glossary write.
+
+    - ``confidence``: 0..1, how cleanly the two line up (unambiguous rank + matching frequency
+      is high; ties / mismatched counts are low).
+    - ``basis``: short human-readable reason ("appearance-order + frequency") for an honest UI.
+    """
+
+    source_term: str
+    surface_form: str
+    source_count: int
+    english_count: int
+    confidence: float
+    basis: str
+
+
 # --- API request models -----------------------------------------------------
 
 

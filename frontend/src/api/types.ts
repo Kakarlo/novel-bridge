@@ -27,6 +27,9 @@ export interface ReferenceChapter {
   title: string;
   content: string;
   created_at: string;
+  // Parsed from the title at upload (backend services/chapter_number.py). null when the
+  // title has no recognizable number — the list falls back to upload order for those.
+  chapter_number: number | null;
   // Derived at upload time by the engine (summary + candidate glossary terms).
   // Both may be absent if extraction hasn't run yet (e.g. engine was offline).
   summary: string | null;

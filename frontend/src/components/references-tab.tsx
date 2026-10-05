@@ -51,6 +51,16 @@ export function ReferencesTab({
 
   const selected = items.find((r) => r.id === selectedId) ?? null;
 
+  // Display in chapter order (how the backend assembles continuity context), with
+  // unnumbered references last. Ties and nulls keep their existing (upload) order via a
+  // stable sort. `items` itself stays in upload order for mutations.
+  const sortedItems = [...items].sort((a, b) => {
+    if (a.chapter_number == null && b.chapter_number == null) return 0;
+    if (a.chapter_number == null) return 1;
+    if (b.chapter_number == null) return -1;
+    return a.chapter_number - b.chapter_number;
+  });
+
   async function handleDelete(ref: ReferenceChapter) {
     await api.deleteReference(ref.id);
     setItems((prev) => prev.filter((r) => r.id !== ref.id));
@@ -129,19 +139,20 @@ export function ReferencesTab({
       ) : (
         <ScrollArea className="min-h-0 flex-1">
           <ul className="divide-y">
-            {items.map((ref) => (
+            {sortedItems.map((ref) => (
               <li key={ref.id}>
                 <button
                   className="group/row flex w-full items-start gap-3 px-6 py-4 text-left transition-colors duration-150 hover:bg-muted/50"
                   onClick={() => setSelectedId(ref.id)}
                 >
-                  <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <ChapterMarker chapter={ref.chapter_number} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{ref.title}</div>
                     <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
                       {ref.summary?.trim() || ref.content}
                     </p>
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
+                      {ref.chapter_number == null && <span className="italic">No chapter number</span>}
                       <span>{ref.content.length.toLocaleString()} chars</span>
                       <span>·</span>
                       <span>{formatDate(ref.created_at)}</span>
@@ -193,6 +204,22 @@ export function ReferencesTab({
         }}
       />
     </div>
+  );
+}
+
+// Leading marker in the reference list: a compact "Ch N" chip when the title parsed to a
+// chapter number, otherwise the plain file icon (keeps row alignment for unnumbered refs).
+function ChapterMarker({ chapter }: { chapter: number | null }) {
+  if (chapter == null) {
+    return <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
+  }
+  return (
+    <span
+      className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded bg-muted px-1.5 text-[11px] font-medium text-muted-foreground tabular-nums"
+      title={`Chapter ${chapter}`}
+    >
+      Ch {chapter}
+    </span>
   );
 }
 
@@ -361,7 +388,14 @@ function ReferenceReader({
           <button onClick={onBack} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
             ← All references
           </button>
-          <h2 className="truncate font-heading text-xl font-semibold tracking-tight">{reference.title}</h2>
+          <div className="flex items-center gap-2">
+            {reference.chapter_number != null && (
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                Ch {reference.chapter_number}
+              </Badge>
+            )}
+            <h2 className="truncate font-heading text-xl font-semibold tracking-tight">{reference.title}</h2>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={redetect} disabled={redetecting} data-icon="inline-start">

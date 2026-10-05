@@ -42,7 +42,7 @@ exists in the translate flow, so the feature now hangs off a _saved translation_
 
 ---
 
-## 2. References gained a `chapter_number` field (ADDITIVE, backward-compatible)
+## 2. References gained a `chapter_number` field (ADDITIVE, backward-compatible) — DONE (display + sort; manual override → BACKEND_TODO #1)
 
 **Why:** reference ordering for continuity should follow chapter order, not upload time.
 The backend now parses a chapter number from the reference title at upload and orders context

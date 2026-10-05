@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["translate"])
 
+# zh/ja source -> English output token-expansion factor, for the debug occupancy estimate
+# only. CJK is dense (one char ~ one word), so the English translation tends to use MORE
+# tokens than the source under the char/3 heuristic; ~1.4x is a rough middle of the usual
+# 1.2-1.5 range. Observability only — nothing branches on this. ponytail: a heuristic with a
+# known ceiling; refine from the measured peaks the debug line now reports if it drifts.
+_OUTPUT_TOKEN_RATIO = 1.4
+
 # One semaphore per configured cap. Keyed by the limit so tests that spin up an
 # app with a different NB_MAX_CONCURRENT_TRANSLATIONS get a correctly-sized gate
 # without leaking state across configurations.
@@ -60,20 +67,25 @@ def translate(
         glossary, references, body.raw_text, settings.nb_context_budget_tokens
     )
 
-    # Debug: estimated prompt occupancy, so the context window (OLLAMA_NUM_CTX) can be sized
-    # from real data rather than guessed. estimate_tokens is the same char/3 heuristic the
-    # budgeter uses, so these numbers are consistent with the budgeting decisions. The
-    # engine's reply is NOT counted here (it hasn't happened yet) — that's the headroom
-    # between assembled tokens and NUM_CTX. Enable with: logging at INFO for app.api.translate.
+    # Debug: estimated context occupancy, so OLLAMA_NUM_CTX can be sized from real data.
+    # The window is shared by PROMPT + GENERATED OUTPUT, and for a full-chapter translation
+    # the output is the same order as the source (often larger). So the number that actually
+    # risks overflow is the PEAK = assembled input + projected output, not the input alone.
+    # Projected output ~= source tokens * _OUTPUT_TOKEN_RATIO (zh/ja -> en tends to expand in
+    # token count). estimate_tokens is the same char/3 heuristic the budgeter uses.
     raw_tok = cb.estimate_tokens(body.raw_text)
     ref_tok = cb.estimate_tokens(built.reference_context)
     assembled = raw_tok + ref_tok
+    projected_output = int(raw_tok * _OUTPUT_TOKEN_RATIO)
+    peak = assembled + projected_output
     logger.info(
-        "translate context: raw=%d ref=%d assembled~%d tokens (budget=%d, NUM_CTX=%d, "
-        "raw_chars=%d, truncated=%s)",
+        "translate context: raw=%d ref=%d assembled~%d + projected_output~%d = peak~%d "
+        "tokens (budget=%d, NUM_CTX=%d, raw_chars=%d, truncated=%s)",
         raw_tok,
         ref_tok,
         assembled,
+        projected_output,
+        peak,
         settings.nb_context_budget_tokens,
         settings.ollama_num_ctx,
         len(body.raw_text),

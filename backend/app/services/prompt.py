@@ -134,17 +134,30 @@ def build_extraction_system_prompt() -> str:
 
 
 def build_extraction_messages(
-    content: str, source_lang: SourceLang
+    content: str,
+    source_lang: SourceLang,
+    detected_names: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Return chat messages for extracting a summary + candidate terms from a reference."""
+    """Return chat messages for extracting a summary + candidate terms from a reference.
+
+    ``detected_names`` are proper nouns found by the deterministic rule-based pass
+    (field-fix #2). They are passed as a hint so the model doesn't have to rediscover
+    obvious capitalized names and can focus on terminology the rules can't catch (lowercase
+    jargon, concepts). The model is told these are hints, not a required echo.
+    """
     lang = _lang_name(source_lang)
-    user = (
+    parts = [
         f"The reference chapter is a {lang}-to-English translation (its text may be "
-        "English). Extract the summary and candidate terms as instructed.\n\n"
-        "## Reference chapter\n"
-        f"{content}"
-    )
+        "English). Extract the summary and candidate terms as instructed."
+    ]
+    if detected_names:
+        parts.append(
+            "## Already-detected names (rule-based hints — you may reuse any that are real "
+            "terms, and add others the rules missed, especially lowercase concepts)\n"
+            + ", ".join(detected_names)
+        )
+    parts.append("## Reference chapter\n" + content)
     return [
         {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-        {"role": "user", "content": user},
+        {"role": "user", "content": "\n\n".join(parts)},
     ]

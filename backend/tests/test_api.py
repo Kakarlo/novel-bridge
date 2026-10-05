@@ -83,6 +83,22 @@ def test_add_reference_extracts_summary(client):
     assert listed["summary"] == ref["summary"]
 
 
+def test_add_reference_detects_proper_nouns(client):
+    pid = _create_project(client)
+    r = client.post(
+        f"/api/projects/{pid}/references",
+        json={
+            "title": "Ch1",
+            "content": "The disciple bowed. Li Changshou climbed Azure Peak at dawn.",
+        },
+    )
+    assert r.status_code == 201
+    ref = r.json()
+    # Rule-based pass surfaces proper nouns separately from the AI candidate_terms.
+    assert "Li Changshou" in ref["detected_names"]
+    assert "Azure Peak" in ref["detected_names"]
+
+
 def test_resummarize_reference(client):
     pid = _create_project(client)
     ref_id = client.post(

@@ -48,6 +48,10 @@ class ReferenceChapter(BaseModel):
     # resummarize is triggered.
     summary: str | None = None
     candidate_terms: list[str] = Field(default_factory=list)
+    # Rule-based proper-noun detections (field-fix #2), kept SEPARATE from the AI's
+    # candidate_terms so the user can see which came from deterministic rules vs the model.
+    # Computed offline from the English text at upload (and on resummarize).
+    detected_names: list[str] = Field(default_factory=list)
 
 
 class GlossaryEntry(BaseModel):

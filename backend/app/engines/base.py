@@ -51,12 +51,17 @@ class TranslationEngine(ABC):
 
     @abstractmethod
     async def extract_reference(
-        self, content: str, source_lang: SourceLang
+        self,
+        content: str,
+        source_lang: SourceLang,
+        detected_names: list[str] | None = None,
     ) -> ReferenceExtraction:
         """Distill a reference chapter into a summary + candidate glossary terms.
 
         Runs once when a reference is uploaded (and on resummarize). The derived,
         compact result is what later translations consume instead of the raw text.
+        ``detected_names`` are optional rule-based proper-noun hints (field-fix #2) the
+        engine may use to anchor its extraction.
         """
         raise NotImplementedError
 

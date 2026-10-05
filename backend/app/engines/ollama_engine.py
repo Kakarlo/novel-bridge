@@ -134,17 +134,21 @@ class OllamaEngine(TranslationEngine):
         yield TranslationChunk(content="", done=True, meta=meta or {"engine": self.name})
 
     async def extract_reference(
-        self, content: str, source_lang: SourceLang
+        self,
+        content: str,
+        source_lang: SourceLang,
+        detected_names: list[str] | None = None,
     ) -> ReferenceExtraction:
         """Distill a reference chapter via a single non-streaming extraction call.
 
         Asks the model for a JSON object (summary + candidate_terms). Parses it
         defensively and falls back to a heuristic summary if the model returns
         non-JSON, so a quirky model response never breaks reference upload.
+        ``detected_names`` (rule-based hints) are passed into the prompt to anchor it.
         """
         payload = {
             "model": self._model,
-            "messages": build_extraction_messages(content, source_lang),
+            "messages": build_extraction_messages(content, source_lang, detected_names),
             "stream": False,
             "think": self._think,
             "format": "json",

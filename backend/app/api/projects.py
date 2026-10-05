@@ -18,6 +18,7 @@ from app.models import (
     TermMatch,
     Translation,
 )
+from app.services.noun_extract import extract_proper_nouns
 from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
@@ -72,20 +73,25 @@ async def add_reference(
 ):
     _require_project(store, pid)
     # Derive a summary + candidate glossary terms once, synchronously, at upload time
-    # (task 13). If extraction fails (e.g. engine unreachable), store the reference
-    # anyway with no summary; the user can trigger resummarize later.
+    # (task 13). A deterministic rule-based proper-noun pass (field-fix #2) runs first and
+    # both (a) feeds the engine as a hint and (b) is stored separately as detected_names.
+    # If engine extraction fails (e.g. unreachable), keep the reference with the rule-based
+    # names anyway; the user can resummarize later.
+    detected_names = extract_proper_nouns(body.content)
     summary: str | None = None
     candidate_terms: list[str] = []
     project = store.get_project(pid)
     lang = (project.source_lang if project else None) or "zh"
     try:
-        extraction = await engine.extract_reference(body.content, lang)
+        extraction = await engine.extract_reference(body.content, lang, detected_names)
         summary = extraction.summary or None
         candidate_terms = extraction.candidate_terms
     except Exception:  # noqa: BLE001 - degrade gracefully, keep the reference
         summary = None
         candidate_terms = []
-    return store.add_reference(pid, body.title, body.content, summary, candidate_terms)
+    return store.add_reference(
+        pid, body.title, body.content, summary, candidate_terms, detected_names
+    )
 
 
 @router.post("/references/{ref_id}/resummarize", response_model=ReferenceChapter)
@@ -99,12 +105,13 @@ async def resummarize_reference(
         raise HTTPException(404, "Reference not found")
     project = store.get_project(ref.project_id)
     lang = (project.source_lang if project else None) or "zh"
+    detected_names = extract_proper_nouns(ref.content)
     try:
-        extraction = await engine.extract_reference(ref.content, lang)
+        extraction = await engine.extract_reference(ref.content, lang, detected_names)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Reference extraction failed: {exc}") from exc
     updated = store.set_reference_summary(
-        ref_id, extraction.summary, extraction.candidate_terms
+        ref_id, extraction.summary, extraction.candidate_terms, detected_names
     )
     if not updated:
         raise HTTPException(404, "Reference not found")

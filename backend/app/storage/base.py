@@ -46,11 +46,16 @@ class StorageService(ABC):
         content: str,
         summary: str | None = None,
         candidate_terms: list[str] | None = None,
+        detected_names: list[str] | None = None,
     ) -> ReferenceChapter: ...
 
     @abstractmethod
     def set_reference_summary(
-        self, ref_id: str, summary: str, candidate_terms: list[str]
+        self,
+        ref_id: str,
+        summary: str,
+        candidate_terms: list[str],
+        detected_names: list[str] | None = None,
     ) -> ReferenceChapter | None: ...
 
     @abstractmethod

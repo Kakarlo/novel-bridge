@@ -50,6 +50,10 @@ class SQLiteStorage(StorageService):
             conn.execute(
                 "ALTER TABLE reference_chapters ADD COLUMN candidate_terms TEXT"
             )
+        if "detected_names" not in cols:
+            conn.execute(
+                "ALTER TABLE reference_chapters ADD COLUMN detected_names TEXT"
+            )
 
     # --- projects ---
     def list_projects(self) -> list[Project]:
@@ -82,16 +86,19 @@ class SQLiteStorage(StorageService):
 
     # --- references ---
     @staticmethod
-    def _row_to_reference(row: sqlite3.Row) -> ReferenceChapter:
-        data = dict(row)
-        terms_raw = data.pop("candidate_terms", None)
+    def _load_json_list(value) -> list:
         try:
-            terms = json.loads(terms_raw) if terms_raw else []
+            parsed = json.loads(value) if value else []
         except (json.JSONDecodeError, TypeError):
-            terms = []
-        if not isinstance(terms, list):
-            terms = []
-        return ReferenceChapter(candidate_terms=terms, **data)
+            return []
+        return parsed if isinstance(parsed, list) else []
+
+    @classmethod
+    def _row_to_reference(cls, row: sqlite3.Row) -> ReferenceChapter:
+        data = dict(row)
+        terms = cls._load_json_list(data.pop("candidate_terms", None))
+        names = cls._load_json_list(data.pop("detected_names", None))
+        return ReferenceChapter(candidate_terms=terms, detected_names=names, **data)
 
     def list_references(self, pid: str) -> list[ReferenceChapter]:
         with self._connect() as conn:
@@ -115,6 +122,7 @@ class SQLiteStorage(StorageService):
         content: str,
         summary: str | None = None,
         candidate_terms: list[str] | None = None,
+        detected_names: list[str] | None = None,
     ) -> ReferenceChapter:
         ref = ReferenceChapter(
             id=new_id(),
@@ -124,12 +132,14 @@ class SQLiteStorage(StorageService):
             created_at=utcnow_iso(),
             summary=summary,
             candidate_terms=candidate_terms or [],
+            detected_names=detected_names or [],
         )
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO reference_chapters"
-                " (id, project_id, title, content, created_at, summary, candidate_terms)"
-                " VALUES (?,?,?,?,?,?,?)",
+                " (id, project_id, title, content, created_at, summary, candidate_terms,"
+                "  detected_names)"
+                " VALUES (?,?,?,?,?,?,?,?)",
                 (
                     ref.id,
                     ref.project_id,
@@ -138,18 +148,35 @@ class SQLiteStorage(StorageService):
                     ref.created_at,
                     ref.summary,
                     json.dumps(ref.candidate_terms, ensure_ascii=False),
+                    json.dumps(ref.detected_names, ensure_ascii=False),
                 ),
             )
         return ref
 
     def set_reference_summary(
-        self, ref_id: str, summary: str, candidate_terms: list[str]
+        self,
+        ref_id: str,
+        summary: str,
+        candidate_terms: list[str],
+        detected_names: list[str] | None = None,
     ) -> ReferenceChapter | None:
         with self._connect() as conn:
-            cur = conn.execute(
-                "UPDATE reference_chapters SET summary=?, candidate_terms=? WHERE id=?",
-                (summary, json.dumps(candidate_terms, ensure_ascii=False), ref_id),
-            )
+            if detected_names is None:
+                cur = conn.execute(
+                    "UPDATE reference_chapters SET summary=?, candidate_terms=? WHERE id=?",
+                    (summary, json.dumps(candidate_terms, ensure_ascii=False), ref_id),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE reference_chapters SET summary=?, candidate_terms=?,"
+                    " detected_names=? WHERE id=?",
+                    (
+                        summary,
+                        json.dumps(candidate_terms, ensure_ascii=False),
+                        json.dumps(detected_names, ensure_ascii=False),
+                        ref_id,
+                    ),
+                )
             if cur.rowcount == 0:
                 return None
             row = conn.execute(

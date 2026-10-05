@@ -31,6 +31,9 @@ export interface ReferenceChapter {
   // Both may be absent if extraction hasn't run yet (e.g. engine was offline).
   summary: string | null;
   candidate_terms: string[];
+  // Rule-based proper-noun detections (field-fix #2), surfaced separately from the AI's
+  // candidate_terms so the user can judge rules-vs-AI picks.
+  detected_names: string[];
 }
 
 export type GlossaryStatus = "candidate" | "approved" | "rejected";

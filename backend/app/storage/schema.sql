@@ -16,7 +16,10 @@ CREATE TABLE IF NOT EXISTS reference_chapters (
   -- Derived at upload time (task 13): a style/plot summary and a JSON array of
   -- candidate glossary terms. NULL until extraction has run.
   summary         TEXT,
-  candidate_terms TEXT
+  candidate_terms TEXT,
+  -- Rule-based proper-noun detections (field-fix #2), JSON array, kept separate from the
+  -- AI candidate_terms. NULL until extraction has run.
+  detected_names  TEXT
 );
 
 -- English-first glossary (task 14). References are English, so entries are keyed on the

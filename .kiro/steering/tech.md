@@ -45,8 +45,10 @@ and client disconnect.
 
 - `GET/POST /api/projects`; `GET/DELETE /api/projects/{id}` (GET returns `{project, counts}`)
 - `GET/POST /api/projects/{id}/references`; `DELETE /api/references/{refId}`.
-  A `ReferenceChapter` now also carries `summary` (string|null) and `candidate_terms`
-  (string[]), derived by the engine at upload time (POST runs extraction synchronously).
+  A `ReferenceChapter` carries `summary` (string|null), `candidate_terms` (string[], from the
+  engine), and `detected_names` (string[], from a deterministic rule-based proper-noun pass —
+  field-fix #2 — kept separate from the AI terms). POST runs the rule pass + engine extraction
+  synchronously; the detected names are also fed to the extraction prompt as hints.
 - `POST /api/references/{refId}/resummarize` — re-run extraction for one reference; returns the
   updated `ReferenceChapter` (200), 404 if missing, 502 if the engine extraction fails.
 - `GET/POST /api/projects/{id}/glossary`; `PUT/DELETE /api/glossary/{entryId}`.

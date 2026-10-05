@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { BookA, FileText, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { FileText, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { ReferenceChapter } from "@/api/types";
@@ -355,21 +355,47 @@ function ReferenceReader({
 }
 
 /**
- * The engine-derived context for a reference: a short style/plot summary and
- * candidate glossary terms. References are English, so candidate terms are already
- * English surface forms — promoting one adds it to the glossary by its English name
- * in a single click, as a `candidate` awaiting approval (English-first; no source
- * mapping to type up front). Phase 5 adds category/gender on promotion.
+ * The engine-derived context for a reference: a style/plot summary plus two separate
+ * groups of promotable English names — rule-based "Detected names" (field-fix #2) and the
+ * AI's "Candidate terms". References are English, so each term IS an English surface form;
+ * promoting adds it to the glossary as a `candidate` in one click (English-first; Phase 5
+ * adds category/gender on promotion).
+ *
+ * Already-promoted terms are hidden (field-fix #4): on load we fetch the project glossary
+ * and drop any term whose surface form already exists (case-insensitive), so the chips
+ * reflect reality after a refresh and don't pile up as more references are added.
  */
 function DerivedContext({ projectId, reference }: { projectId: string; reference: ReferenceChapter }) {
-  // Terms already promoted this session, so the chip can show a done state
-  // without a full refetch of the glossary.
-  const [promoted, setPromoted] = useState<Set<string>>(new Set());
+  // Surface forms already in the glossary (case-insensitive), fetched on load so chip
+  // state survives a refresh instead of living only in session state.
+  const [inGlossary, setInGlossary] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let active = true;
+    api
+      .listGlossary(projectId)
+      .then((entries) => {
+        if (active) setInGlossary(new Set(entries.map((e) => e.surface_form.toLowerCase())));
+      })
+      .catch(() => {
+        /* non-fatal: chips just won't pre-filter */
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, reference.id]);
 
   const hasSummary = !!reference.summary?.trim();
-  const terms = reference.candidate_terms ?? [];
+  // Hide terms already in the glossary. Detected (rule-based) names come first; drop any
+  // that also appear in the AI candidate list to avoid showing the same name twice.
+  const detected = (reference.detected_names ?? []).filter((t) => !inGlossary.has(t.toLowerCase()));
+  const detectedLower = new Set(detected.map((t) => t.toLowerCase()));
+  const candidates = (reference.candidate_terms ?? []).filter(
+    (t) => !inGlossary.has(t.toLowerCase()) && !detectedLower.has(t.toLowerCase())
+  );
 
-  if (!hasSummary && terms.length === 0) {
+  const nothingToShow = !hasSummary && detected.length === 0 && candidates.length === 0;
+  if (nothingToShow) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         <Sparkles className="mr-1.5 inline size-3.5" />
@@ -383,14 +409,30 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     const en = term.trim();
     if (!en) return;
     try {
-      // English-first: the candidate term IS the English name. Add as a candidate.
+      // English-first: the term IS the English name. Add as a candidate to approve later.
       await api.createGlossary(projectId, { surface_form: en, status: "candidate" });
-      setPromoted((prev) => new Set(prev).add(term));
+      // Remove it from the chips immediately by marking it in-glossary.
+      setInGlossary((prev) => new Set(prev).add(en.toLowerCase()));
       toast.success(`Added “${en}” to the glossary`);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not add to glossary");
     }
   }
+
+  const chip = (term: string) => (
+    <li key={term}>
+      <Button
+        size="xs"
+        variant="outline"
+        className="h-6 gap-1 font-normal"
+        onClick={() => promote(term)}
+        title="Add to glossary"
+      >
+        {term}
+        <Plus className="size-3 opacity-70" />
+      </Button>
+    </li>
+  );
 
   return (
     <section className="space-y-4 rounded-lg border bg-muted/20 p-4">
@@ -406,40 +448,27 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
         </div>
       )}
 
-      {terms.length > 0 && (
+      {detected.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-foreground">
+            Detected names
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              — found by rules (capitalized proper nouns); click to add to the glossary
+            </span>
+          </div>
+          <ul className="flex flex-wrap gap-1.5">{detected.map(chip)}</ul>
+        </div>
+      )}
+
+      {candidates.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-medium text-foreground">
             Candidate terms
             <span className="ml-1.5 font-normal text-muted-foreground">
-              — click to add an English name to the glossary (as a candidate to approve later)
+              — suggested by the model; click to add to the glossary (as a candidate to approve later)
             </span>
           </div>
-          <ul className="flex flex-wrap gap-1.5">
-            {terms.map((term) => {
-              const done = promoted.has(term);
-              return (
-                <li key={term}>
-                  {done ? (
-                    <Badge variant="secondary" className="gap-1 font-normal" data-icon="inline-start">
-                      <BookA className="size-3" />
-                      {term}
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      className="h-6 gap-1 font-normal"
-                      onClick={() => promote(term)}
-                      title="Add to glossary"
-                    >
-                      {term}
-                      <Plus className="size-3 opacity-70" />
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="flex flex-wrap gap-1.5">{candidates.map(chip)}</ul>
         </div>
       )}
     </section>

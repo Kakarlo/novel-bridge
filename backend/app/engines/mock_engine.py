@@ -53,19 +53,24 @@ class MockEngine(TranslationEngine):
         )
 
     async def extract_reference(
-        self, content: str, source_lang: SourceLang
+        self,
+        content: str,
+        source_lang: SourceLang,
+        detected_names: list[str] | None = None,
     ) -> ReferenceExtraction:
         """Deterministic, network-free extraction for offline dev and tests.
 
         Summary = a `[MOCK-SUMMARY]` marker plus the first sentence/line, truncated.
         Candidate terms = distinct capitalized words (a crude proper-noun heuristic),
-        kept deterministic (sorted, de-duplicated, capped).
+        kept deterministic (sorted, de-duplicated, capped). Any ``detected_names`` hints
+        are merged in so the mock mirrors the real engine's hint-aware behavior.
         """
         text = content.strip()
         first = re.split(r"(?<=[.!?。！？])\s+|\n", text, maxsplit=1)[0] if text else ""
         summary = f"[MOCK-SUMMARY] {first[:200]}".strip()
-        terms = sorted({w for w in re.findall(r"\b[A-Z][a-zA-Z]+\b", text)})[:10]
-        return ReferenceExtraction(summary=summary, candidate_terms=terms)
+        terms = {w for w in re.findall(r"\b[A-Z][a-zA-Z]+\b", text)}
+        terms.update(detected_names or [])
+        return ReferenceExtraction(summary=summary, candidate_terms=sorted(terms)[:10])
 
     async def health(self) -> bool:
         return True

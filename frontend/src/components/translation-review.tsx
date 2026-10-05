@@ -82,7 +82,7 @@ export function TranslationReview({
   // pane even with both groups expanded; the groups themselves are collapsible to reclaim
   // space entirely.
   return (
-    <section className="max-h-[40%] shrink-0 space-y-3 overflow-y-auto border-b bg-muted/20 px-6 py-4">
+    <section className="pane-scroll max-h-[40%] shrink-0 space-y-3 overflow-y-auto border-b bg-muted/20 px-6 py-4">
       <div className="flex items-center gap-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         <Sparkles className="size-3.5" />
         Review (experimental)
@@ -98,7 +98,7 @@ export function TranslationReview({
             {pairs.map((c) => (
               <li
                 key={pairKey(c)}
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-background px-2.5 py-1.5 text-sm"
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-card px-2.5 py-1.5 text-sm"
               >
                 <span className="font-medium">{c.source_term}</span>
                 <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
@@ -151,7 +151,7 @@ export function TranslationReview({
                     toast.success(`Copied “${term}”`);
                   }}
                   title="Copy source term"
-                  className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-sm font-normal transition-colors hover:bg-muted"
+                  className="inline-flex h-7 items-center gap-1 rounded-md border bg-card px-2 text-sm font-normal transition-colors hover:bg-muted"
                 >
                   {term}
                 </button>

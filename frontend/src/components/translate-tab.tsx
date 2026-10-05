@@ -384,7 +384,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
               readOnly={viewing}
               placeholder={lang === "zh" ? "粘贴原文章节…" : "原文の章をここに貼り付け…"}
               spellCheck={false}
-              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-sans text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
+              className="pane-scroll min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-sans text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
             />
           </section>
 

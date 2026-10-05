@@ -14,6 +14,7 @@ from app.deps import get_storage, get_translation_engine
 from app.engines.base import TranslationEngine, TranslationRequest
 from app.models import TranslateRequest
 from app.services import context_builder as cb
+from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
 router = APIRouter(prefix="/api", tags=["translate"])
@@ -110,7 +111,14 @@ def translate(
             saved = store.save_translation(
                 pid, body.source_lang, body.raw_text, output_text, model_used
             )
-            yield _sse({"done": True, "translation_id": saved.id})
+            done_event: dict = {"done": True, "translation_id": saved.id}
+            # Opt-in in-context review (task 14): detect glossary terms in the output and
+            # fold them into the terminal event so the client can offer approve/reject.
+            # Detection only — the translation itself is never modified.
+            if body.review_terms:
+                matches = find_occurrences(output_text, glossary)
+                done_event["matches"] = [m.model_dump() for m in matches]
+            yield _sse(done_event)
         finally:
             # Release on completion, error, or client disconnect (GeneratorExit).
             sem.release()

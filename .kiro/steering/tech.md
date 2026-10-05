@@ -49,16 +49,28 @@ and client disconnect.
   (string[]), derived by the engine at upload time (POST runs extraction synchronously).
 - `POST /api/references/{refId}/resummarize` — re-run extraction for one reference; returns the
   updated `ReferenceChapter` (200), 404 if missing, 502 if the engine extraction fails.
-- `GET/POST /api/projects/{id}/glossary`; `PUT/DELETE /api/glossary/{entryId}`
-  (POST upserts on duplicate `source_term`)
-- `POST /api/projects/{id}/translate` — **SSE** `text/event-stream`. Events:
+- `GET/POST /api/projects/{id}/glossary`; `PUT/DELETE /api/glossary/{entryId}`.
+  Glossary is **English-first** (task 14): entries have `surface_form` (English, required),
+  `source_term` (nullable), `status` (`candidate|approved|rejected`), `category`
+  (`character|title|term`), `gender` (`male|female|unknown`, nullable), `note`, `created_at`.
+  POST upserts on `surface_form` (case-insensitive): a paired entry (`source_term` set) defaults
+  to `approved`, an English-only add defaults to `candidate`; an explicit `status` wins.
+- `PATCH /api/glossary/{entryId}/status` — approve/reject a term (`{status}`); 200 with the
+  updated entry, 404 if missing. This is the in-context review action.
+- `POST /api/projects/{id}/translate` — **SSE** `text/event-stream`. Request body may set
+  `review_terms: true` (opt-in in-context review; default false). Events:
   `data: {"content":"..."}` repeated, optional `data: {"info":"..."}` (truncation notice, or
   `"waiting for a free translation slot"` when queued behind the concurrency cap), terminal
-  `data: {"done":true,"translation_id":"..."}`, or `data: {"error":"..."}` on failure. When the
+  `data: {"done":true,"translation_id":"...","matches":[...]}` (the `matches` array is present
+  only when `review_terms` was true — each is a `TermMatch`: `term_id`, `surface_form`,
+  `status`, `category`, `count`, `snippets`), or `data: {"error":"..."}` on failure. When the
   concurrency cap is saturated and no slot frees within `NB_QUEUE_TIMEOUT_SECONDS`, the stream
   emits a busy `error` event ("Server busy: too many translations in progress...") and closes
   (HTTP stays 200 for the event-stream).
 - `GET /api/projects/{id}/translations`; `GET /api/translations/{tid}`
+- `GET /api/translations/{tid}/matches` — re-run occurrence detection against a saved
+  translation using the project's **current** glossary; returns `TermMatch[]` (200), 404 when
+  missing. Recomputed on demand (not stored); detection only, never rewrites the translation.
 - `DELETE /api/translations/{tid}` — 204 on success, 404 when missing. Backed by
   `delete_translation` on `StorageService` + the SQLite impl.
 - `GET /api/health` — returns `{status, reachable, engine, model}`. **Now probes the actual

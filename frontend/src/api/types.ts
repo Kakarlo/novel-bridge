@@ -95,9 +95,22 @@ export interface GlossaryStatusUpdate {
   status: GlossaryStatus;
 }
 
+// One glossary term's occurrences in a translation's output (task 14). Produced by the
+// backend's occurrence detector for the in-context review loop. Detection only.
+export interface TermMatch {
+  term_id: string;
+  surface_form: string;
+  status: GlossaryStatus;
+  category: GlossaryCategory;
+  count: number;
+  snippets: string[];
+}
+
 export interface TranslateRequest {
   raw_text: string;
   source_lang: SourceLang;
+  // Opt-in in-context term review. When true, the done event carries `matches`.
+  review_terms?: boolean;
 }
 
 // --- SSE event shapes (POST /api/projects/{id}/translate) ---
@@ -112,6 +125,8 @@ export interface SseInfoEvent {
 export interface SseDoneEvent {
   done: true;
   translation_id: string;
+  // Present only when the request opted into term review (task 14).
+  matches?: TermMatch[];
 }
 export interface SseErrorEvent {
   error: string;

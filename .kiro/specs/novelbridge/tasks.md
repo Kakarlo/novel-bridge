@@ -204,9 +204,13 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
           case-insensitive via `re` lookarounds, multi-word phrases, regex-safe, detection-only)
           returning `TermMatch` (term_id/surface_form/status/category/count/snippets), sorted by
           count desc. New `TermMatch` model. 12 offline unit tests; full suite 60 pass.
-    - 14.3 API: `POST /projects/{id}/glossary/english`, `PATCH /glossary/{id}/status`, matches
-      folded into the translate `done` event (behind the opt-in review flag) +
-      `GET /translations/{tid}/matches`; API tests on the mock engine.
+    - [x] 14.3 API: English-first create (folded into existing `POST /projects/{id}/glossary`),
+          `PATCH /glossary/{id}/status` (Phase 1), `review_terms` opt-in on the translate request
+          with `matches` folded into the SSE `done` event, and `GET /translations/{tid}/matches`
+          (recompute vs current glossary; 404 if missing). Frontend client gained `setGlossaryStatus`
+      - `getTranslationMatches` + `review_terms`/`TermMatch`/`matches` types. API contract in
+        `tech.md` updated. 63 backend tests pass; frontend builds clean.
+        Note: opt-in review flag is a per-request bool (stateless; streaming path untouched when off).
     - 14.4 Prompt integration: approved terms → a "preferred spellings" block
       (category/gender-aware); keep the paired `source => target` block for entries with a
       `source_term`. Atomic extraction + matching engine tasks. Context-builder budgeting +

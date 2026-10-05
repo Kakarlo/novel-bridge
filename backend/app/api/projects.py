@@ -15,8 +15,10 @@ from app.models import (
     ProjectCreate,
     ReferenceChapter,
     ReferenceCreate,
+    TermMatch,
     Translation,
 )
+from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
 router = APIRouter(prefix="/api", tags=["projects"])
@@ -194,6 +196,21 @@ def get_translation(tid: str, store: StorageService = Depends(get_storage)):
     if not tr:
         raise HTTPException(404, "Translation not found")
     return tr
+
+
+@router.get("/translations/{tid}/matches", response_model=list[TermMatch])
+def get_translation_matches(tid: str, store: StorageService = Depends(get_storage)):
+    """Re-run occurrence detection against a saved translation (task 14).
+
+    Supports retrospective review: viewing a saved translation re-scans its output for
+    the project's current glossary terms. Recomputed on demand (not stored), so edits to
+    the glossary are reflected without re-translating. Detection only.
+    """
+    tr = store.get_translation(tid)
+    if not tr:
+        raise HTTPException(404, "Translation not found")
+    glossary = store.list_glossary(tr.project_id)
+    return find_occurrences(tr.output_text, glossary)
 
 
 @router.delete("/translations/{tid}", status_code=204)

@@ -176,6 +176,10 @@ class GlossaryStatusUpdate(BaseModel):
 class TranslateRequest(BaseModel):
     raw_text: str = Field(min_length=1)
     source_lang: SourceLang
+    # Opt-in in-context term review (task 14). When true, the terminal `done` SSE event
+    # carries `matches` (glossary terms found in the output) for the approve/reject loop.
+    # Defaults false so the streaming path is untouched unless the user turned review on.
+    review_terms: bool = False
 
     @field_validator("raw_text")
     @classmethod

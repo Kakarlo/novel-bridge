@@ -182,6 +182,69 @@ def test_translate_unknown_project_404(client):
     assert r.status_code == 404
 
 
+def _run_translate(client, pid, raw, extra=None):
+    """Stream a translation and return (reassembled events, done_event)."""
+    body = {"raw_text": raw, "source_lang": "zh", **(extra or {})}
+    with client.stream("POST", f"/api/projects/{pid}/translate", json=body) as resp:
+        assert resp.status_code == 200
+        text = "".join(resp.iter_text())
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in text.splitlines()
+        if line.startswith("data: ")
+    ]
+    done = next(e for e in events if e.get("done"))
+    return events, done
+
+
+def test_translate_review_terms_folds_matches_into_done(client):
+    pid = _create_project(client)
+    # An approved English-first term that will appear in the mock output.
+    client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "hello", "status": "approved"},
+    )
+    # The mock engine echoes the raw text, so "hello" appears in the output.
+    _events, done = _run_translate(
+        client, pid, "hello there, hello again", extra={"review_terms": True}
+    )
+    assert "matches" in done
+    assert len(done["matches"]) == 1
+    m = done["matches"][0]
+    assert m["surface_form"] == "hello"
+    assert m["count"] == 2
+    assert m["status"] == "approved"
+
+
+def test_translate_without_review_omits_matches(client):
+    pid = _create_project(client)
+    client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "hello", "status": "approved"},
+    )
+    _events, done = _run_translate(client, pid, "hello there")
+    assert "matches" not in done  # streaming path untouched when review is off
+
+
+def test_saved_translation_matches_endpoint(client):
+    pid = _create_project(client)
+    client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "world", "status": "approved"},
+    )
+    _events, done = _run_translate(client, pid, "hello world, cruel world")
+    tid = done["translation_id"]
+
+    # Retrospective matching against the saved translation + current glossary.
+    r = client.get(f"/api/translations/{tid}/matches")
+    assert r.status_code == 200
+    matches = r.json()
+    assert len(matches) == 1
+    assert matches[0]["surface_form"] == "world" and matches[0]["count"] == 2
+    # Unknown translation -> 404.
+    assert client.get("/api/translations/nope/matches").status_code == 404
+
+
 def test_delete_translation(client):
     pid = _create_project(client)
     # Produce one saved translation via the streaming endpoint.

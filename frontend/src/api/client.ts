@@ -5,12 +5,14 @@ import { streamSse } from "./sse";
 import type {
   GlossaryCreate,
   GlossaryEntry,
+  GlossaryStatus,
   GlossaryUpdate,
   Project,
   ProjectCreate,
   ProjectDetail,
   ReferenceChapter,
   ReferenceCreate,
+  TermMatch,
   TranslateEvent,
   TranslateRequest,
   Translation,
@@ -95,6 +97,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  // Approve/reject a term in context (the in-context review loop, task 14).
+  setGlossaryStatus: (entryId: string, status: GlossaryStatus) =>
+    request<GlossaryEntry>(`/glossary/${entryId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   deleteGlossary: (entryId: string) => request<void>(`/glossary/${entryId}`, { method: "DELETE" }),
 
   // --- translations ---
@@ -102,6 +110,8 @@ export const api = {
   getTranslation: (tid: string) => request<Translation>(`/translations/${tid}`),
   // Backed by DELETE /api/translations/{tid} (204/404) — endpoint is live.
   deleteTranslation: (tid: string) => request<void>(`/translations/${tid}`, { method: "DELETE" }),
+  // Retrospective term matches for a saved translation (task 14).
+  getTranslationMatches: (tid: string) => request<TermMatch[]>(`/translations/${tid}/matches`),
 
   /**
    * Open the SSE translate stream. Returns an async iterator of parsed events;

@@ -33,24 +33,55 @@ def test_reference_crud_and_cascade(store):
     assert store.list_references(p.id) == []
 
 
-def test_glossary_upsert_uniqueness(store):
+def test_glossary_english_first_add_defaults(store):
     p = store.create_project("S", "ja")
-    e1 = store.upsert_glossary(p.id, "林", "Lin", None)
-    # same source_term upserts (updates), does not duplicate
-    e2 = store.upsert_glossary(p.id, "林", "Rin", "name changed")
+    e = store.add_term(p.id, "Fang Yuan")
+    # English-only add defaults: candidate status, term category, no source/gender
+    assert e.surface_form == "Fang Yuan"
+    assert e.status == "candidate"
+    assert e.category == "term"
+    assert e.source_term is None
+    assert e.gender is None
+    assert e.created_at  # timestamped on insert
+
+
+def test_glossary_add_merges_on_surface_form_case_insensitive(store):
+    p = store.create_project("S", "ja")
+    e1 = store.add_term(p.id, "Fang Yuan")
+    # Same surface form (different case) merges rather than duplicating, and fills fields.
+    e2 = store.add_term(
+        p.id,
+        "fang yuan",
+        source_term="方源",
+        status="approved",
+        category="character",
+        gender="male",
+    )
     entries = store.list_glossary(p.id)
     assert len(entries) == 1
     assert e1.id == e2.id
-    assert entries[0].translation == "Rin"
-    assert entries[0].note == "name changed"
+    assert entries[0].source_term == "方源"
+    assert entries[0].status == "approved"
+    assert entries[0].category == "character"
+    assert entries[0].gender == "male"
+
+
+def test_glossary_set_term_status(store):
+    p = store.create_project("S", None)
+    e = store.add_term(p.id, "Spirit Root")
+    approved = store.set_term_status(e.id, "approved")
+    assert approved.status == "approved"
+    assert store.set_term_status("missing", "approved") is None
 
 
 def test_glossary_update_and_delete(store):
     p = store.create_project("S", None)
-    e = store.upsert_glossary(p.id, "天", "Heaven", None)
-    updated = store.update_glossary(e.id, translation="Sky", note=None)
-    assert updated.translation == "Sky"
-    assert store.update_glossary("missing", "x", None) is None
+    e = store.add_term(p.id, "Heaven", source_term="天", status="approved")
+    updated = store.update_glossary(e.id, surface_form="Sky", note="renamed")
+    assert updated.surface_form == "Sky"
+    assert updated.note == "renamed"
+    assert updated.source_term == "天"  # untouched fields preserved
+    assert store.update_glossary("missing", surface_form="x") is None
     assert store.delete_glossary(e.id) is True
     assert store.list_glossary(p.id) == []
 

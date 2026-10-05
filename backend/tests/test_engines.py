@@ -16,7 +16,12 @@ from app.models import GlossaryEntry
 
 
 def _glossary(pid: str = "p1") -> list[GlossaryEntry]:
-    return [GlossaryEntry(id="g1", project_id=pid, source_term="林", translation="Lin")]
+    return [
+        GlossaryEntry(
+            id="g1", project_id=pid, surface_form="Lin", source_term="林",
+            status="approved",
+        )
+    ]
 
 
 async def _collect(engine, req):

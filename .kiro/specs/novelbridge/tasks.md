@@ -194,9 +194,12 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
     - Matches fold into the translate `done` event; `GET /translations/{tid}/matches` serves
       retro-review of saved translations.
   - **Phases (each a commit; build + offline tests green):**
-    - 14.1 Data + storage: redefine `schema.sql` (surface_form/source_term/status/**category**/
-      **gender**/note/created_at), recreate dev DB, update `models.py`/TS types, add `add_term`
-      - `set_term_status` (keep classic CRUD) + storage tests.
+    - [x] 14.1 Data + storage: redefined `schema.sql`
+          (surface_form/source_term/status/**category**/**gender**/note/created_at, unique on
+          surface_form COLLATE NOCASE), recreated dev DB, updated `models.py` + frontend `types.ts`,
+          added `add_term` (upsert-merge) and `set_term_status`, made `update_glossary`
+          keyword-based, kept classic paired CRUD; updated prompt/context-builder/mock-engine and the
+          glossary + reference-promote UI to the new shape. 48 backend tests pass; frontend builds clean.
     - 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`, whole-word
       case-insensitive, pure stdlib) + offline unit tests.
     - 14.3 API: `POST /projects/{id}/glossary/english`, `PATCH /glossary/{id}/status`, matches

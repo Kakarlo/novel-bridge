@@ -19,13 +19,23 @@ CREATE TABLE IF NOT EXISTS reference_chapters (
   candidate_terms TEXT
 );
 
+-- English-first glossary (task 14). References are English, so entries are keyed on the
+-- English `surface_form`. `source_term` is optional (classic paired entries, or filled in
+-- once a source<->translation match is confirmed). `status` drives the approve/reject
+-- flow; `category`/`gender` steer the prompt (gender helps zh->en pronoun consistency).
 CREATE TABLE IF NOT EXISTS glossary_entries (
-  id          TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  source_term TEXT NOT NULL,
-  translation TEXT NOT NULL,
-  note        TEXT,
-  UNIQUE (project_id, source_term)
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  surface_form TEXT NOT NULL,
+  source_term  TEXT,
+  status       TEXT NOT NULL DEFAULT 'candidate'
+                 CHECK (status IN ('candidate','approved','rejected')),
+  category     TEXT NOT NULL DEFAULT 'term'
+                 CHECK (category IN ('character','title','term')),
+  gender       TEXT CHECK (gender IN ('male','female','unknown')),
+  note         TEXT,
+  created_at   TEXT NOT NULL,
+  UNIQUE (project_id, surface_form COLLATE NOCASE)
 );
 
 CREATE TABLE IF NOT EXISTS translations (

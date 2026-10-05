@@ -33,12 +33,22 @@ export interface ReferenceChapter {
   candidate_terms: string[];
 }
 
+export type GlossaryStatus = "candidate" | "approved" | "rejected";
+export type GlossaryCategory = "character" | "title" | "term";
+export type Gender = "male" | "female" | "unknown";
+
+// English-first glossary entry (task 14). `surface_form` is the English name (always
+// present); `source_term` is the optional original-language term.
 export interface GlossaryEntry {
   id: string;
   project_id: string;
-  source_term: string;
-  translation: string;
+  surface_form: string;
+  source_term: string | null;
+  status: GlossaryStatus;
+  category: GlossaryCategory;
+  gender: Gender | null;
   note: string | null;
+  created_at: string | null;
 }
 
 export interface Translation {
@@ -64,14 +74,25 @@ export interface ReferenceCreate {
 }
 
 export interface GlossaryCreate {
-  source_term: string;
-  translation: string;
+  surface_form: string;
+  source_term?: string | null;
+  status?: GlossaryStatus | null;
+  category?: GlossaryCategory;
+  gender?: Gender | null;
   note?: string | null;
 }
 
 export interface GlossaryUpdate {
-  translation?: string | null;
+  surface_form?: string | null;
+  source_term?: string | null;
+  status?: GlossaryStatus | null;
+  category?: GlossaryCategory | null;
+  gender?: Gender | null;
   note?: string | null;
+}
+
+export interface GlossaryStatusUpdate {
+  status: GlossaryStatus;
 }
 
 export interface TranslateRequest {

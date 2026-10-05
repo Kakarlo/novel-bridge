@@ -13,6 +13,9 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator
 
 SourceLang = Literal["zh", "ja"]
+GlossaryStatus = Literal["candidate", "approved", "rejected"]
+GlossaryCategory = Literal["character", "title", "term"]
+Gender = Literal["male", "female", "unknown"]
 
 
 def new_id() -> str:
@@ -48,11 +51,29 @@ class ReferenceChapter(BaseModel):
 
 
 class GlossaryEntry(BaseModel):
+    """English-first glossary entry (task 14).
+
+    The glossary is English-first because references are already English, so the user
+    knows the English name, not the source term. ``surface_form`` is the English name and
+    is always present. ``source_term`` is the optional original-language term (set for
+    classic paired entries, or once a source↔translation match has been confirmed).
+
+    - ``status``: ``candidate`` (extracted, awaiting approval) → ``approved`` (fed to the
+      prompt as a preferred spelling) / ``rejected`` (kept out of the prompt).
+    - ``category``: ``character`` | ``title`` | ``term`` (borrowed from OpenNovel so the
+      prompt can treat character names, honorific titles, and generic terms distinctly).
+    - ``gender``: meaningful for characters; steers zh→en pronoun consistency.
+    """
+
     id: str
     project_id: str
-    source_term: str
-    translation: str
+    surface_form: str
+    source_term: str | None = None
+    status: GlossaryStatus = "candidate"
+    category: GlossaryCategory = "term"
+    gender: Gender | None = None
     note: str | None = None
+    created_at: str | None = None
 
 
 class Translation(BaseModel):
@@ -93,21 +114,47 @@ class ReferenceCreate(BaseModel):
 
 
 class GlossaryCreate(BaseModel):
-    source_term: str
-    translation: str
+    """Create a glossary entry, English-first.
+
+    ``surface_form`` (the English name) is required. ``source_term`` is optional: when
+    provided this is a classic paired entry and defaults to ``approved`` status. An
+    English-only add omits ``source_term`` and defaults to ``candidate``.
+    """
+
+    surface_form: str
+    source_term: str | None = None
+    status: GlossaryStatus | None = None
+    category: GlossaryCategory = "term"
+    gender: Gender | None = None
     note: str | None = None
 
-    @field_validator("source_term", "translation")
+    @field_validator("surface_form")
     @classmethod
-    def not_blank(cls, v: str) -> str:
+    def surface_not_blank(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("Glossary source term and translation must not be empty.")
+            raise ValueError("Glossary surface form must not be empty.")
         return v.strip()
+
+    @field_validator("source_term")
+    @classmethod
+    def source_blank_to_none(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 class GlossaryUpdate(BaseModel):
-    translation: str | None = None
+    surface_form: str | None = None
+    source_term: str | None = None
+    status: GlossaryStatus | None = None
+    category: GlossaryCategory | None = None
+    gender: Gender | None = None
     note: str | None = None
+
+
+class GlossaryStatusUpdate(BaseModel):
+    status: GlossaryStatus
 
 
 class TranslateRequest(BaseModel):

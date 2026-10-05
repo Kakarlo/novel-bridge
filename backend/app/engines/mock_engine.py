@@ -28,12 +28,12 @@ class MockEngine(TranslationEngine):
     def _apply_glossary(self, text: str, req: TranslationRequest) -> str:
         for entry in req.glossary:
             if entry.source_term:
-                text = text.replace(entry.source_term, entry.translation)
+                text = text.replace(entry.source_term, entry.surface_form)
         return text
 
     async def stream(self, req: TranslationRequest) -> AsyncIterator[TranslationChunk]:
         applied = sorted(
-            {f"{e.source_term}->{e.translation}" for e in req.glossary}
+            {f"{e.source_term}->{e.surface_form}" for e in req.glossary if e.source_term}
         )
         header = (
             f"[MOCK] source={req.source_lang}"

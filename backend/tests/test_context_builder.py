@@ -105,7 +105,10 @@ def test_single_oversized_summary_truncated_with_note():
 
 def test_glossary_and_raw_reduce_remaining_budget():
     glossary = [
-        GlossaryEntry(id=f"g{i}", project_id="p", source_term="x" * 30, translation="y" * 30)
+        GlossaryEntry(
+            id=f"g{i}", project_id="p", surface_form="y" * 30, source_term="x" * 30,
+            status="approved",
+        )
         for i in range(5)
     ]
     ref = _ref(summary="Z" * 6000, title="Ch1")

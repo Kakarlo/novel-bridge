@@ -47,9 +47,22 @@ def test_user_message_handles_no_reference():
 
 
 def test_glossary_rendered_when_present():
-    g = [GlossaryEntry(id="g1", project_id="p", source_term="林", translation="Lin")]
+    g = [
+        GlossaryEntry(
+            id="g1", project_id="p", surface_form="Lin", source_term="林",
+            status="approved",
+        )
+    ]
     msgs = prompt.build_translation_messages(_req(glossary=g))
     assert "林 => Lin" in msgs[1]["content"]
+
+
+def test_english_only_glossary_rendered_as_preferred_spelling():
+    g = [GlossaryEntry(id="g1", project_id="p", surface_form="Fang Yuan")]
+    msgs = prompt.build_translation_messages(_req(glossary=g))
+    content = msgs[1]["content"]
+    assert "Fang Yuan" in content
+    assert "=> Fang Yuan" not in content  # no bogus pair without a source term
 
 
 def test_extraction_messages_request_json_summary_and_terms():

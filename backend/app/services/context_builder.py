@@ -41,7 +41,9 @@ class BuiltContext:
 def _glossary_tokens(glossary: list[GlossaryEntry]) -> int:
     total = 0
     for e in glossary:
-        total += estimate_tokens(e.source_term) + estimate_tokens(e.translation)
+        total += estimate_tokens(e.surface_form)
+        if e.source_term:
+            total += estimate_tokens(e.source_term)
         if e.note:
             total += estimate_tokens(e.note)
         total += 4  # formatting overhead per line

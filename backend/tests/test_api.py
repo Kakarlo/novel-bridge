@@ -98,30 +98,55 @@ def test_resummarize_reference(client):
     assert client.post("/api/references/nope/resummarize").status_code == 404
 
 
-def test_glossary_upsert_and_update(client):
+def test_glossary_paired_create_and_update(client):
     pid = _create_project(client)
+    # A classic paired entry: source_term + the English surface_form. Defaults to approved.
     r = client.post(
         f"/api/projects/{pid}/glossary",
-        json={"source_term": "林", "translation": "Lin"},
+        json={"surface_form": "Lin", "source_term": "林"},
     )
     assert r.status_code == 201
-    entry_id = r.json()["id"]
-    # duplicate source_term upserts rather than duplicating
+    entry = r.json()
+    entry_id = entry["id"]
+    assert entry["status"] == "approved"
+    # Upsert on the same surface_form (case-insensitive) merges rather than duplicating.
     client.post(
         f"/api/projects/{pid}/glossary",
-        json={"source_term": "林", "translation": "Rin"},
+        json={"surface_form": "lin", "source_term": "林", "note": "renamed"},
     )
     entries = client.get(f"/api/projects/{pid}/glossary").json()
-    assert len(entries) == 1 and entries[0]["translation"] == "Rin"
-    upd = client.put(f"/api/glossary/{entry_id}", json={"translation": "Lyn"})
-    assert upd.status_code == 200 and upd.json()["translation"] == "Lyn"
+    assert len(entries) == 1 and entries[0]["note"] == "renamed"
+    upd = client.put(f"/api/glossary/{entry_id}", json={"surface_form": "Lyn"})
+    assert upd.status_code == 200 and upd.json()["surface_form"] == "Lyn"
+
+
+def test_glossary_english_only_add_and_status(client):
+    pid = _create_project(client)
+    # English-only add defaults to candidate; category/gender accepted.
+    r = client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "Fang Yuan", "category": "character", "gender": "male"},
+    )
+    assert r.status_code == 201
+    entry = r.json()
+    assert entry["status"] == "candidate"
+    assert entry["category"] == "character" and entry["gender"] == "male"
+    assert entry["source_term"] is None
+    # Approve it via the status PATCH.
+    patched = client.patch(
+        f"/api/glossary/{entry['id']}/status", json={"status": "approved"}
+    )
+    assert patched.status_code == 200 and patched.json()["status"] == "approved"
+    # Blank surface form is rejected.
+    bad = client.post(f"/api/projects/{pid}/glossary", json={"surface_form": "  "})
+    assert bad.status_code == 422
 
 
 def test_translate_streams_and_autosaves(client):
     pid = _create_project(client)
     client.post(
         f"/api/projects/{pid}/glossary",
-        json={"source_term": "林", "translation": "Lin"},
+        json={"surface_form": "Lin", "source_term": "林"},
     )
     with client.stream(
         "POST",

@@ -164,47 +164,113 @@ class SQLiteStorage(StorageService):
             )
         return cur.rowcount > 0
 
-    # --- glossary ---
+    # --- glossary (English-first, task 14) ---
     def list_glossary(self, pid: str) -> list[GlossaryEntry]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM glossary_entries WHERE project_id=? ORDER BY source_term ASC",
+                "SELECT * FROM glossary_entries WHERE project_id=?"
+                " ORDER BY surface_form COLLATE NOCASE ASC",
                 (pid,),
             ).fetchall()
         return [GlossaryEntry(**dict(r)) for r in rows]
 
-    def upsert_glossary(
-        self, pid: str, source_term: str, translation: str, note: str | None
+    def add_term(
+        self,
+        pid: str,
+        surface_form: str,
+        *,
+        source_term: str | None = None,
+        status: str = "candidate",
+        category: str = "term",
+        gender: str | None = None,
+        note: str | None = None,
     ) -> GlossaryEntry:
-        """Insert, or update translation/note if (project, source_term) exists."""
+        """Insert or upsert an English-first term, keyed on surface_form (case-insensitive).
+
+        If the surface form already exists for the project, non-null fields are merged in
+        (source_term/status/category/gender/note), so promoting a candidate to a paired,
+        approved entry is a single call.
+        """
         with self._connect() as conn:
             existing = conn.execute(
-                "SELECT * FROM glossary_entries WHERE project_id=? AND source_term=?",
-                (pid, source_term),
+                "SELECT * FROM glossary_entries"
+                " WHERE project_id=? AND surface_form=? COLLATE NOCASE",
+                (pid, surface_form),
             ).fetchone()
             if existing:
-                conn.execute(
-                    "UPDATE glossary_entries SET translation=?, note=? WHERE id=?",
-                    (translation, note, existing["id"]),
-                )
                 entry_id = existing["id"]
+                merged = {
+                    "surface_form": surface_form,
+                    "source_term": source_term
+                    if source_term is not None
+                    else existing["source_term"],
+                    "status": status or existing["status"],
+                    "category": category or existing["category"],
+                    "gender": gender if gender is not None else existing["gender"],
+                    "note": note if note is not None else existing["note"],
+                }
+                conn.execute(
+                    "UPDATE glossary_entries SET surface_form=?, source_term=?, status=?,"
+                    " category=?, gender=?, note=? WHERE id=?",
+                    (
+                        merged["surface_form"],
+                        merged["source_term"],
+                        merged["status"],
+                        merged["category"],
+                        merged["gender"],
+                        merged["note"],
+                        entry_id,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT * FROM glossary_entries WHERE id=?", (entry_id,)
+                ).fetchone()
             else:
                 entry_id = new_id()
+                created_at = utcnow_iso()
                 conn.execute(
-                    "INSERT INTO glossary_entries (id, project_id, source_term, translation, note)"
-                    " VALUES (?,?,?,?,?)",
-                    (entry_id, pid, source_term, translation, note),
+                    "INSERT INTO glossary_entries"
+                    " (id, project_id, surface_form, source_term, status, category,"
+                    "  gender, note, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (
+                        entry_id,
+                        pid,
+                        surface_form,
+                        source_term,
+                        status,
+                        category,
+                        gender,
+                        note,
+                        created_at,
+                    ),
                 )
-        return GlossaryEntry(
-            id=entry_id,
-            project_id=pid,
-            source_term=source_term,
-            translation=translation,
-            note=note,
-        )
+                row = conn.execute(
+                    "SELECT * FROM glossary_entries WHERE id=?", (entry_id,)
+                ).fetchone()
+        return GlossaryEntry(**dict(row))
+
+    def set_term_status(self, entry_id: str, status: str) -> GlossaryEntry | None:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE glossary_entries SET status=? WHERE id=?", (status, entry_id)
+            )
+            if cur.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM glossary_entries WHERE id=?", (entry_id,)
+            ).fetchone()
+        return GlossaryEntry(**dict(row)) if row else None
 
     def update_glossary(
-        self, entry_id: str, translation: str | None, note: str | None
+        self,
+        entry_id: str,
+        *,
+        surface_form: str | None = None,
+        source_term: str | None = None,
+        status: str | None = None,
+        category: str | None = None,
+        gender: str | None = None,
+        note: str | None = None,
     ) -> GlossaryEntry | None:
         with self._connect() as conn:
             row = conn.execute(
@@ -212,11 +278,30 @@ class SQLiteStorage(StorageService):
             ).fetchone()
             if not row:
                 return None
-            new_translation = translation if translation is not None else row["translation"]
-            new_note = note if note is not None else row["note"]
+            merged = {
+                "surface_form": surface_form
+                if surface_form is not None
+                else row["surface_form"],
+                "source_term": source_term
+                if source_term is not None
+                else row["source_term"],
+                "status": status if status is not None else row["status"],
+                "category": category if category is not None else row["category"],
+                "gender": gender if gender is not None else row["gender"],
+                "note": note if note is not None else row["note"],
+            }
             conn.execute(
-                "UPDATE glossary_entries SET translation=?, note=? WHERE id=?",
-                (new_translation, new_note, entry_id),
+                "UPDATE glossary_entries SET surface_form=?, source_term=?, status=?,"
+                " category=?, gender=?, note=? WHERE id=?",
+                (
+                    merged["surface_form"],
+                    merged["source_term"],
+                    merged["status"],
+                    merged["category"],
+                    merged["gender"],
+                    merged["note"],
+                    entry_id,
+                ),
             )
             updated = conn.execute(
                 "SELECT * FROM glossary_entries WHERE id=?", (entry_id,)

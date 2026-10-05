@@ -56,18 +56,37 @@ class StorageService(ABC):
     @abstractmethod
     def delete_reference(self, ref_id: str) -> bool: ...
 
-    # --- glossary ---
+    # --- glossary (English-first, task 14) ---
     @abstractmethod
     def list_glossary(self, pid: str) -> list[GlossaryEntry]: ...
 
     @abstractmethod
-    def upsert_glossary(
-        self, pid: str, source_term: str, translation: str, note: str | None
+    def add_term(
+        self,
+        pid: str,
+        surface_form: str,
+        *,
+        source_term: str | None = None,
+        status: str = "candidate",
+        category: str = "term",
+        gender: str | None = None,
+        note: str | None = None,
     ) -> GlossaryEntry: ...
 
     @abstractmethod
+    def set_term_status(self, entry_id: str, status: str) -> GlossaryEntry | None: ...
+
+    @abstractmethod
     def update_glossary(
-        self, entry_id: str, translation: str | None, note: str | None
+        self,
+        entry_id: str,
+        *,
+        surface_form: str | None = None,
+        source_term: str | None = None,
+        status: str | None = None,
+        category: str | None = None,
+        gender: str | None = None,
+        note: str | None = None,
     ) -> GlossaryEntry | None: ...
 
     @abstractmethod

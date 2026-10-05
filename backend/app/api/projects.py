@@ -9,6 +9,7 @@ from app.engines.base import TranslationEngine
 from app.models import (
     GlossaryCreate,
     GlossaryEntry,
+    GlossaryStatusUpdate,
     GlossaryUpdate,
     Project,
     ProjectCreate,
@@ -125,15 +126,50 @@ def list_glossary(pid: str, store: StorageService = Depends(get_storage)):
 def create_glossary(
     pid: str, body: GlossaryCreate, store: StorageService = Depends(get_storage)
 ):
+    """Create/upsert a glossary term, English-first.
+
+    A paired entry (``source_term`` provided) defaults to ``approved``; an English-only
+    add defaults to ``candidate``. An explicit ``status`` in the body wins.
+    """
     _require_project(store, pid)
-    return store.upsert_glossary(pid, body.source_term, body.translation, body.note)
+    status = body.status or ("approved" if body.source_term else "candidate")
+    return store.add_term(
+        pid,
+        body.surface_form,
+        source_term=body.source_term,
+        status=status,
+        category=body.category,
+        gender=body.gender,
+        note=body.note,
+    )
 
 
 @router.put("/glossary/{entry_id}", response_model=GlossaryEntry)
 def update_glossary(
     entry_id: str, body: GlossaryUpdate, store: StorageService = Depends(get_storage)
 ):
-    updated = store.update_glossary(entry_id, body.translation, body.note)
+    updated = store.update_glossary(
+        entry_id,
+        surface_form=body.surface_form,
+        source_term=body.source_term,
+        status=body.status,
+        category=body.category,
+        gender=body.gender,
+        note=body.note,
+    )
+    if not updated:
+        raise HTTPException(404, "Glossary entry not found")
+    return updated
+
+
+@router.patch("/glossary/{entry_id}/status", response_model=GlossaryEntry)
+def set_glossary_status(
+    entry_id: str,
+    body: GlossaryStatusUpdate,
+    store: StorageService = Depends(get_storage),
+):
+    """Approve/reject a term in context (the in-context review loop)."""
+    updated = store.set_term_status(entry_id, body.status)
     if not updated:
         raise HTTPException(404, "Glossary entry not found")
     return updated

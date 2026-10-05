@@ -66,8 +66,15 @@ def build_translation_messages(req: TranslationRequest) -> list[dict[str, str]]:
     parts: list[str] = []
 
     if req.glossary:
+        # Entries with a source_term render as an authoritative pair; English-only entries
+        # render as a preferred spelling. (Phase 4 expands this into category/gender-aware
+        # blocks; this keeps the paired path working after the English-first redefinition.)
         glossary_lines = "\n".join(
-            f"- {e.source_term} => {e.translation}"
+            (
+                f"- {e.source_term} => {e.surface_form}"
+                if e.source_term
+                else f"- {e.surface_form}"
+            )
             + (f"  ({e.note})" if e.note else "")
             for e in req.glossary
         )

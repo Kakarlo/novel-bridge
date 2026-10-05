@@ -356,14 +356,12 @@ function ReferenceReader({
 
 /**
  * The engine-derived context for a reference: a short style/plot summary and
- * candidate glossary terms. Candidate terms are source-language suggestions, not
- * authoritative mappings — promoting one opens a quick form to supply the English
- * rendering, which creates a real (authoritative) glossary entry. Keeping bare
- * candidate terms out of the glossary is deliberate: unmapped source tokens don't
- * stabilize names on their own.
+ * candidate glossary terms. References are English, so candidate terms are already
+ * English surface forms — promoting one adds it to the glossary by its English name
+ * in a single click, as a `candidate` awaiting approval (English-first; no source
+ * mapping to type up front). Phase 5 adds category/gender on promotion.
  */
 function DerivedContext({ projectId, reference }: { projectId: string; reference: ReferenceChapter }) {
-  const [promoting, setPromoting] = useState<string | null>(null);
   // Terms already promoted this session, so the chip can show a done state
   // without a full refetch of the glossary.
   const [promoted, setPromoted] = useState<Set<string>>(new Set());
@@ -381,14 +379,14 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     );
   }
 
-  async function promote(term: string, translation: string) {
-    const en = translation.trim();
+  async function promote(term: string) {
+    const en = term.trim();
     if (!en) return;
     try {
-      await api.createGlossary(projectId, { source_term: term, translation: en });
+      // English-first: the candidate term IS the English name. Add as a candidate.
+      await api.createGlossary(projectId, { surface_form: en, status: "candidate" });
       setPromoted((prev) => new Set(prev).add(term));
-      setPromoting(null);
-      toast.success(`Added “${term} → ${en}” to the glossary`);
+      toast.success(`Added “${en}” to the glossary`);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not add to glossary");
     }
@@ -413,7 +411,7 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
           <div className="text-xs font-medium text-foreground">
             Candidate terms
             <span className="ml-1.5 font-normal text-muted-foreground">
-              — add to the glossary with an English mapping to make them authoritative
+              — click to add an English name to the glossary (as a candidate to approve later)
             </span>
           </div>
           <ul className="flex flex-wrap gap-1.5">
@@ -431,7 +429,7 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
                       size="xs"
                       variant="outline"
                       className="h-6 gap-1 font-normal"
-                      onClick={() => setPromoting(term)}
+                      onClick={() => promote(term)}
                       title="Add to glossary"
                     >
                       {term}
@@ -444,66 +442,6 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
           </ul>
         </div>
       )}
-
-      {promoting !== null && (
-        <PromoteTermForm
-          term={promoting}
-          onCancel={() => setPromoting(null)}
-          onSubmit={(translation) => promote(promoting, translation)}
-        />
-      )}
     </section>
-  );
-}
-
-function PromoteTermForm({
-  term,
-  onCancel,
-  onSubmit,
-}: {
-  term: string;
-  onCancel: () => void;
-  onSubmit: (translation: string) => void | Promise<void>;
-}) {
-  const [translation, setTranslation] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!translation.trim()) return;
-    setSaving(true);
-    try {
-      await onSubmit(translation);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="flex items-end gap-2 rounded-md border bg-background p-3">
-      <div className="space-y-1">
-        <Label className="text-[11px] text-muted-foreground">Source term</Label>
-        <div className="flex h-8 items-center rounded-md border bg-muted/40 px-2.5 text-sm font-medium">{term}</div>
-      </div>
-      <div className="min-w-0 flex-1 space-y-1">
-        <Label htmlFor="promote-en" className="text-[11px] text-muted-foreground">
-          English mapping
-        </Label>
-        <Input
-          id="promote-en"
-          autoFocus
-          value={translation}
-          onChange={(e) => setTranslation(e.target.value)}
-          placeholder="e.g. Fang Yuan"
-          className="h-8"
-        />
-      </div>
-      <Button type="submit" size="sm" disabled={!translation.trim() || saving}>
-        Add
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
-        Cancel
-      </Button>
-    </form>
   );
 }

@@ -102,6 +102,13 @@ Where this is heading (do not build ahead of these, but don't block them either)
     `GET /translations/{tid}/matches` endpoint for retro-review.
     Plan + phases live in spec task 14 and `tech.md`. **Flag major decisions before building,
     even on autopilot.**
+  - **Phase 14.1 (data + storage) DONE.** `glossary_entries` redefined English-first in
+    `schema.sql` (surface_form/source_term/status/category/gender/note/created_at, unique on
+    surface_form COLLATE NOCASE); dev DB recreated. `models.py` + frontend `types.ts` updated;
+    storage gained `add_term` (upsert-merge on surface_form) + `set_term_status`;
+    `update_glossary` is keyword-based. Prompt/context-builder/mock-engine updated to the new
+    shape; glossary tab + reference promote-to-glossary flow updated English-first (richer
+    status/category/gender UI deferred to Phase 14.5). 48 backend tests pass; frontend builds clean.
 - **Next novelty track after the glossary: user-editable prompts (settings).** A settings area
   to customize the prompt per task (translation, extraction, summary). This is the clearest
   differentiator for the local-LLM goal; sequence it right after the glossary data layer.

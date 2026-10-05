@@ -40,11 +40,12 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
     });
   }
 
-  async function handleCreate(source_term: string, translation: string, note: string) {
-    const existing = entries.find((e) => e.source_term.toLowerCase() === source_term.toLowerCase());
+  async function handleCreate(source_term: string, surface_form: string, note: string) {
+    const existing = entries.find((e) => e.surface_form.toLowerCase() === surface_form.toLowerCase());
+    // A paired entry (source_term + English surface_form) is authoritative → approved.
     const entry = await api.createGlossary(projectId, {
-      source_term,
-      translation,
+      surface_form,
+      source_term: source_term || null,
       note: note || null,
     });
     upsertLocal(entry);
@@ -52,9 +53,9 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
     setAdding(false);
   }
 
-  async function handleUpdate(id: string, translation: string, note: string) {
+  async function handleUpdate(id: string, surface_form: string, note: string) {
     const entry = await api.updateGlossary(id, {
-      translation,
+      surface_form,
       note: note || null,
     });
     upsertLocal(entry);
@@ -113,7 +114,7 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
             {/* column header */}
             <div className="grid grid-cols-[1fr_1fr_auto] gap-3 px-2 pb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
               <span>Source term</span>
-              <span>Translation</span>
+              <span>English name</span>
               <span className="w-16 text-right">Actions</span>
             </div>
 
@@ -136,15 +137,15 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
                     className="group/row grid grid-cols-[1fr_1fr_auto] items-start gap-3 rounded-lg px-2 py-2.5 transition-colors duration-150 hover:bg-muted/50"
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-medium">{entry.source_term}</div>
+                      <div className="truncate font-medium">{entry.source_term ?? "—"}</div>
                       {entry.note && <div className="mt-0.5 truncate text-xs text-muted-foreground">{entry.note}</div>}
                     </div>
-                    <div className="min-w-0 truncate pt-0.5">{entry.translation}</div>
+                    <div className="min-w-0 truncate pt-0.5">{entry.surface_form}</div>
                     <div className="flex w-16 justify-end gap-0.5 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100">
                       <Button
                         size="icon-xs"
                         variant="ghost"
-                        aria-label={`Edit ${entry.source_term}`}
+                        aria-label={`Edit ${entry.surface_form}`}
                         onClick={() => {
                           setEditingId(entry.id);
                           setAdding(false);
@@ -155,7 +156,7 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
                       <Button
                         size="icon-xs"
                         variant="ghost"
-                        aria-label={`Delete ${entry.source_term}`}
+                        aria-label={`Delete ${entry.surface_form}`}
                         onClick={() => setPendingDelete(entry)}
                       >
                         <Trash2 className="text-muted-foreground" />
@@ -175,7 +176,7 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
         title="Delete this term?"
         description={
           <>
-            <span className="font-medium text-foreground">{pendingDelete?.source_term}</span> will be removed from the
+            <span className="font-medium text-foreground">{pendingDelete?.surface_form}</span> will be removed from the
             glossary.
           </>
         }
@@ -193,18 +194,20 @@ interface GlossaryEditorProps {
   mode: "create" | "edit";
   entry?: GlossaryEntry;
   onCancel: () => void;
-  onSubmitCreate?: (source_term: string, translation: string, note: string) => Promise<void>;
-  onSubmitUpdate?: (id: string, translation: string, note: string) => Promise<void>;
+  onSubmitCreate?: (source_term: string, surface_form: string, note: string) => Promise<void>;
+  onSubmitUpdate?: (id: string, surface_form: string, note: string) => Promise<void>;
 }
 
 function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate }: GlossaryEditorProps) {
   const [sourceTerm, setSourceTerm] = useState(entry?.source_term ?? "");
-  const [translation, setTranslation] = useState(entry?.translation ?? "");
+  const [surfaceForm, setSurfaceForm] = useState(entry?.surface_form ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState(false);
 
-  const invalid = useMemo(() => !sourceTerm.trim() || !translation.trim(), [sourceTerm, translation]);
+  // Only the English surface form is required; the source term is optional
+  // (English-first). Phase 5 adds status/category/gender controls here.
+  const invalid = useMemo(() => !surfaceForm.trim(), [surfaceForm]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -213,9 +216,9 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
     try {
       setSubmitting(true);
       if (mode === "create") {
-        await onSubmitCreate?.(sourceTerm.trim(), translation.trim(), note.trim());
+        await onSubmitCreate?.(sourceTerm.trim(), surfaceForm.trim(), note.trim());
       } else if (entry) {
-        await onSubmitUpdate?.(entry.id, translation.trim(), note.trim());
+        await onSubmitUpdate?.(entry.id, surfaceForm.trim(), note.trim());
       }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Save failed");
@@ -234,11 +237,10 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
           autoFocus={mode === "create"}
           value={sourceTerm}
           onChange={(e) => setSourceTerm(e.target.value)}
-          placeholder="源术语 / 用語"
+          placeholder="源术语 / 用語 (optional)"
           className="h-8"
           disabled={mode === "edit"}
-          aria-invalid={touched && !sourceTerm.trim()}
-          aria-label="Source term"
+          aria-label="Source term (optional)"
         />
         <Input
           value={note}
@@ -255,12 +257,12 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
       </div>
 
       <Input
-        value={translation}
-        onChange={(e) => setTranslation(e.target.value)}
-        placeholder="English translation"
+        value={surfaceForm}
+        onChange={(e) => setSurfaceForm(e.target.value)}
+        placeholder="English name"
         className="h-8"
-        aria-invalid={touched && !translation.trim()}
-        aria-label="Translation"
+        aria-invalid={touched && !surfaceForm.trim()}
+        aria-label="English name"
       />
 
       <div className="flex w-16 justify-end gap-0.5">
@@ -277,7 +279,7 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
 
 function sortEntries(list: GlossaryEntry[]): GlossaryEntry[] {
   return [...list].sort((a, b) =>
-    a.source_term.localeCompare(b.source_term, undefined, {
+    a.surface_form.localeCompare(b.surface_form, undefined, {
       sensitivity: "base",
     })
   );

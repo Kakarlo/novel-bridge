@@ -125,15 +125,43 @@ Treat `.kiro/specs/novelbridge/tasks.md` as the live task list; these are the ag
   migration). `context_builder.build()` now budgets summaries newest-first instead of raw tails.
   Extraction runs synchronously on POST reference and on `POST /api/references/{refId}/resummarize`;
   failures degrade gracefully (reference saved with no summary; resummarize later).
-- **English-first glossary with in-context approval (ACTIVE MAJOR FEATURE — spec task 14):**
-  references are English, so extracted candidate terms are English surface forms. The user adds
-  a name by its **English form alone**; occurrences in a translation are flagged for
-  **approve/reject**, and approved terms steer the prompt as preferred spellings. Redefine
-  `glossary_entries` English-first (`surface_form` req, `source_term` nullable, `status`
-  candidate|approved|rejected; unique on `surface_form COLLATE NOCASE`). **No migration — no
-  production data; redefine `schema.sql` and recreate the dev DB.** Occurrence matching is
-  stdlib exact whole-word, case-insensitive (fuzzy is a flagged follow-up). Phased build in
-  `tasks.md` (14.1–14.7). Flag the open design decisions before building.
+- **English-first glossary with in-context approval (ACTIVE MAJOR FEATURE — spec task 14 —
+  table stakes, not the novelty):** references are English, so extracted candidate terms are
+  English surface forms. The user adds a name by its **English form alone**; occurrences in a
+  translation are flagged for **approve/reject**, and approved terms steer the prompt as
+  preferred spellings (a _guide_, not a find-and-replace — matching only detects, never
+  rewrites). Settled decisions (Phase 0, confirmed with the author):
+  - Redefine `glossary_entries` English-first: `surface_form` (req), `source_term` (nullable),
+    `status` (`candidate|approved|rejected`, default `candidate`), **`category`
+    (`character|title|term`, default `term`)**, **`gender` (`male|female|unknown`, nullable —
+    meaningful for `character`)**, `note`, `created_at`; `UNIQUE(project_id, surface_form
+COLLATE NOCASE)`. **No migration — no production data; redefine `schema.sql` and recreate
+    the dev DB.** `category`/`gender` are borrowed from OpenNovel: gender steers zh→en pronoun
+    drift; title preference is per-reader.
+  - Classic paired entries still fit (`source_term` set, `status='approved'`). One table.
+  - Extracted terms start as **`candidate`**; user approval required before a term reaches the
+    prompt. `rejected` = kept out of the prompt (handles meaningless noise candidates). A
+    dedicated **"avoid" category** (steer _away_ from a bad spelling) is a separate future
+    track, NOT the same as `rejected`.
+  - Occurrence matching: stdlib **exact whole-word, case-insensitive** (fuzzy/alias is a flagged
+    follow-up). Pure function in `services/term_match.py`; detection only.
+  - **Term review is opt-in** (a settings toggle); the streaming translate path is untouched
+    when review is off.
+  - **Atomic engine tasks:** key-term extraction and source↔translation term matching are
+    separate, small-context engine calls so a weak local model (`qwen3.5:0.8b`-class) does one
+    narrow job at a time, rather than one big combined prompt.
+  - Matches fold into the translate `done` event; `GET /translations/{tid}/matches` serves
+    retro-review of saved translations.
+  - Keep the in-context review UI **lightweight** (highlighting + a review panel), not a full
+    inline-edit review studio — that's where OmniTranslate already spends.
+  - Phased build in `tasks.md` (14.1–14.7). Flag major decisions before building.
+- **User-editable prompts per task (NEXT NOVELTY TRACK — not yet specced in detail):** a
+  settings area to customize the prompt for each engine task (translation, glossary/key-term
+  extraction, reference summary). This is the clearest differentiator for the local-LLM goal
+  (the prompt is the only tuning surface when you can't fine-tune the model). Design note:
+  overridable prompt templates layered over the `services/prompt.py` defaults, stored per
+  project (or global), behind the existing builders so engines don't change. Sequence it right
+  after the glossary data layer. An optimized flow for paid/hosted models is a later follow-up.
 - **Model status probe (DONE):** `GET /api/health` now calls `engine.health()` and reports real
   reachability (see the API section). The frontend indicator keys off `reachable`.
 - **Model picker (deferred):** choose the model per request from a list. Backend-first

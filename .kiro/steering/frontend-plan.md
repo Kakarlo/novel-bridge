@@ -61,19 +61,30 @@ bring-your-own LLM API-token flow, and accounts/cloud only if adoption warrants 
 
 ## Next major frontend work — English-first glossary with in-context approval (spec task 14)
 
+This is **table stakes** (the competitors already have it) — build it clean and credible, keep
+the review UI **lightweight**, and don't pour effort into an inline-edit review studio.
 References are English, so candidate terms are English surface forms. The user adds a name by
 its English form alone and **approves/rejects** it when it appears in a translation. Frontend
 surface:
 
-- **Glossary tab:** "Add name (English only)", status badges (`candidate|approved|rejected`),
+- **Glossary tab:** "Add name (English only)" with **category** (`character|title|term`) and an
+  optional **gender** (characters), status badges (`candidate|approved|rejected`),
   approve/reject controls, status filter. Keep the classic paired-entry editor working.
-- **Translate tab:** after a translation completes, a **term-review panel** lists matched terms
-  with Approve / Reject, and occurrences are highlighted in the output pane.
+- **Translate tab:** term review is **opt-in** (a settings toggle). When on, after a translation
+  completes a **term-review panel** lists matched terms with Approve / Reject and occurrences
+  are highlighted in the output pane (basic highlight, not click-to-edit).
 - **History:** viewing a saved translation re-runs matching (via a matches endpoint) for
   retrospective review.
 
 Phased with the backend (see `tasks.md` 14.1–14.7) so the HTTP contract changes once. Flag the
 open design decisions before building.
+
+## After that — user-editable prompts (settings) — the novelty track (spec task 22)
+
+A settings surface to customize the prompt per engine task (translation, extraction, summary),
+with "reset to default" and a view of the effective prompt. This is the clearest frontend lever
+on the local-LLM reading-quality goal. Spec it after task 14's data layer; flag the design
+first.
 
 ## Working rules
 

@@ -159,37 +159,59 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
   - Contract change flagged for frontend: `ReferenceChapter` gains `summary` + `candidate_terms`;
     new resummarize route.
 
-- [ ] 14. English-first glossary with in-context approval (MAJOR; plan done, phased build)
+- [ ] 14. English-first glossary with in-context approval (MAJOR; **table stakes**, phased build)
+  - **Framing:** this is the consistency mechanism every competitor already has (OpenNovel,
+    OmniTranslate) — build it solid and credible, then stop; don't over-invest in review-studio
+    polish. The project's novelty is the harness itself (model-agnostic, local, open,
+    user-editable prompts — see `product.md` north star and task 22).
   - **Why:** references are English, so the engine's `candidate_terms` are English surface forms
     — the user knows the English name, not the source term, and shouldn't have to hunt for it.
     The user adds a name by its **English form alone**; when it appears in a translation they
     **approve/reject** the usage in context. Approved terms steer the prompt as preferred
-    spellings. This is the biggest lever on reading quality (names stay consistent across a
-    series). Full plan: session artifact "English-first glossary with in-context approval".
+    spellings (a _guide_, not a find-and-replace: matching only detects occurrences, never
+    rewrites output).
   - **No migration:** no production data exists, so `glossary_entries` is redefined directly in
     `schema.sql` and the dev `novelbridge.db` is deleted + recreated. No additive/backfill work.
-  - **Settled defaults (confirm before building, see artifact open questions):** one glossary
-    table redefined English-first — `surface_form` (req), `source_term` (nullable), `status`
-    (`candidate|approved|rejected`, default `candidate`), `note`, `created_at`,
-    `UNIQUE(project_id, surface_form COLLATE NOCASE)`. Occurrence detection = exact whole-word
-    case-insensitive (stdlib; fuzzy is a flagged follow-up). Review happens after a translation
-    completes and when viewing a saved one. Approved terms feed a new "preferred spellings"
-    prompt block; rejected terms optionally feed an "avoid" block.
+  - **Settled decisions (Phase 0 — confirmed with the author):**
+    - One glossary table redefined English-first — `surface_form` (req), `source_term`
+      (nullable), `status` (`candidate|approved|rejected`, default `candidate`), **`category`
+      (`character|title|term`, default `term`)**, **`gender` (`male|female|unknown`, nullable;
+      meaningful for `character`)**, `note`, `created_at`,
+      `UNIQUE(project_id, surface_form COLLATE NOCASE)`. Classic paired entries fit
+      (`source_term` set, `status='approved'`).
+    - `category`/`gender` borrowed from OpenNovel: gender steers zh→en pronoun drift; title
+      preference (师兄 → "Senior Brother" vs "Shixiong") is per-reader.
+    - Extracted terms start as **`candidate`**; approval required before a term reaches the
+      prompt. `rejected` = kept out of the prompt (handles meaningless noise candidates). A
+      dedicated **"avoid" block** (steer away from a bad spelling) is a SEPARATE future track,
+      not the same as `rejected`.
+    - Occurrence detection = **exact whole-word, case-insensitive** (stdlib; fuzzy is a flagged
+      follow-up). Detection only — never rewrites output.
+    - **Term review is opt-in** via a settings toggle; the streaming translate path is untouched
+      when review is off.
+    - **Atomic engine tasks:** key-term extraction and source↔translation term matching are
+      separate, small-context engine calls so a weak local model does one narrow job at a time.
+    - Matches fold into the translate `done` event; `GET /translations/{tid}/matches` serves
+      retro-review of saved translations.
   - **Phases (each a commit; build + offline tests green):**
-    - 14.1 Data + storage: redefine `schema.sql`, recreate dev DB, update `models.py`/TS types,
-      add `add_term` + `set_term_status` + storage tests.
-    - 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`) + offline tests.
+    - 14.1 Data + storage: redefine `schema.sql` (surface_form/source_term/status/**category**/
+      **gender**/note/created_at), recreate dev DB, update `models.py`/TS types, add `add_term`
+      - `set_term_status` (keep classic CRUD) + storage tests.
+    - 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`, whole-word
+      case-insensitive, pure stdlib) + offline unit tests.
     - 14.3 API: `POST /projects/{id}/glossary/english`, `PATCH /glossary/{id}/status`, matches
-      folded into the translate `done` event + `GET /translations/{tid}/matches`; API tests.
-    - 14.4 Prompt integration: approved terms → "preferred spellings" block; context-builder
-      budgeting + prompt tests. (The reading-quality payoff.)
-    - 14.5 Glossary UI: English-only add, status badges, approve/reject, status filter.
-    - 14.6 In-context review UI: translate-tab review panel + output highlighting; history
-      retro-review via the matches endpoint.
+      folded into the translate `done` event (behind the opt-in review flag) +
+      `GET /translations/{tid}/matches`; API tests on the mock engine.
+    - 14.4 Prompt integration: approved terms → a "preferred spellings" block
+      (category/gender-aware); keep the paired `source => target` block for entries with a
+      `source_term`. Atomic extraction + matching engine tasks. Context-builder budgeting +
+      prompt tests. (The reading-quality payoff.)
+    - 14.5 Glossary UI: English-only add with category + gender, status badges, approve/reject,
+      status filter; keep the classic paired editor. Opt-in review toggle.
+    - 14.6 In-context review UI (**lightweight, opt-in**): translate-tab review panel +
+      basic output highlighting; history retro-review via the matches endpoint. Not a full
+      inline-edit review studio.
     - 14.7 Verification: end-to-end on mock + one live pass; update README/steering.
-  - **Open decisions still to confirm:** candidate-vs-approved on add; match surfacing via the
-    `done` event vs a separate call; whether rejected terms are sent as "avoid"; Phase 0 as a
-    light note vs a full spec rewrite. Flag these for confirmation even in autopilot.
 
 - [ ] 15. Model picker (deferred; capture only)
   - `GET /api/models` proxying Ollama `/api/tags`, plus per-request model plumbing (engine
@@ -201,6 +223,20 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
     (alongside Ollama/mock), key stored in local config for now. **Local-first still holds** —
     no accounts/cloud yet; those come only if adoption warrants it, behind `StorageService`.
     Do not design anything in task 14 that blocks this, but don't start it.
+
+- [ ] 22. User-editable prompts per task (NOVELTY TRACK; spec after task 14's data layer)
+  - **Why it matters:** this is a core differentiator. The competitors (OpenNovel,
+    OmniTranslate) run their own tuned models and hide the prompt. NovelBridge is a
+    model-agnostic, local, open harness, so **the prompt is the user's only tuning surface** —
+    the lever that makes a free/local LLM produce a decent read for a specific genre or model.
+  - **Shape (to be specced):** a settings area to override the prompt template for each engine
+    task — translation, glossary/key-term extraction, reference summary. Overrides layer over
+    the `services/prompt.py` defaults (named builders already exist), stored per project and/or
+    globally behind the storage interface. Engines don't change. Include a "reset to default"
+    and show the effective prompt. Keep offline tests on the mock engine.
+  - **Sequencing:** right after task 14's data/storage layer; it's small and high-leverage. An
+    optimized flow for paid/hosted models is a later follow-up (relates to task 21).
+  - Capture only for now — flag the design before building.
 
 ### Frontend
 

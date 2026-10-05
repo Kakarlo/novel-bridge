@@ -377,7 +377,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
               readOnly={viewing}
               placeholder={lang === "zh" ? "粘贴原文章节…" : "原文の章をここに貼り付け…"}
               spellCheck={false}
-              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-serif text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
+              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-6 py-5 font-sans text-[1.02rem] leading-[1.75] shadow-none focus-visible:ring-0"
             />
           </section>
 
@@ -400,7 +400,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
             )}
             <ScrollArea ref={outputScrollRef} className="min-h-0 flex-1">
               {output ? (
-                <div className="px-6 py-5 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
+                <div className="px-6 py-5 font-sans text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
                   {output}
                   {streaming && (
                     <span className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] animate-pulse bg-accent-brand align-middle" />

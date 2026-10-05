@@ -425,28 +425,40 @@ def _client_with(settings: Settings):
     return TestClient(app)
 
 
-def test_experimental_endpoints_gated_off_by_default(client):
-    """Both experimental endpoints 404 when their flags are off (the default)."""
-    pid = _create_project(client)
-    ref = client.post(
-        f"/api/projects/{pid}/references",
-        json={"title": "Ch1", "content": "Lin Feng went to Beijing."},
-    ).json()
-    assert client.get(f"/api/references/{ref['id']}/source-terms").status_code == 404
-    # A saved translation to test pronoun-drift gating.
-    with client.stream(
-        "POST",
-        f"/api/projects/{pid}/translate",
-        json={"raw_text": "测试", "source_lang": "zh"},
-    ) as s:
-        tid = None
-        for line in s.iter_lines():
-            if line and line.startswith("data:"):
-                payload = json.loads(line[5:])
-                if payload.get("done"):
-                    tid = payload["translation_id"]
-    assert tid
-    assert client.get(f"/api/translations/{tid}/pronoun-drift").status_code == 404
+def test_experimental_endpoints_gated_off_by_default(tmp_path):
+    """Both experimental endpoints 404 when their flags are off.
+
+    Pin the flags OFF explicitly rather than relying on the ambient config: a developer's
+    local ``.env`` may set ``NB_SOURCE_TERMS``/``NB_PRONOUN_CHECK`` true, and this test
+    asserts the gating behavior, not whatever the running box happens to be configured for.
+    """
+    settings = Settings(
+        nb_engine="mock",
+        nb_db_path=str(tmp_path / "gated.db"),
+        nb_source_terms=False,
+        nb_pronoun_check=False,
+    )
+    with _client_with(settings) as client:
+        pid = _create_project(client)
+        ref = client.post(
+            f"/api/projects/{pid}/references",
+            json={"title": "Ch1", "content": "Lin Feng went to Beijing."},
+        ).json()
+        assert client.get(f"/api/references/{ref['id']}/source-terms").status_code == 404
+        # A saved translation to test pronoun-drift gating.
+        with client.stream(
+            "POST",
+            f"/api/projects/{pid}/translate",
+            json={"raw_text": "测试", "source_lang": "zh"},
+        ) as s:
+            tid = None
+            for line in s.iter_lines():
+                if line and line.startswith("data:"):
+                    payload = json.loads(line[5:])
+                    if payload.get("done"):
+                        tid = payload["translation_id"]
+        assert tid
+        assert client.get(f"/api/translations/{tid}/pronoun-drift").status_code == 404
 
 
 def test_pronoun_drift_endpoint_when_enabled(tmp_path):

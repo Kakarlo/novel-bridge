@@ -1,28 +1,148 @@
-"""Rule-based proper-noun detection for reference chapters (field-fix #2).
+"""Proper-noun detection for reference chapters (field-fix #2, Issue 1: spaCy NER).
 
-References are English, so proper nouns (character names, places, sects, titles) are
-reliably *capitalized*. A deterministic pass over the text catches most of them without
-asking the model — which is the point: don't make a weak local LLM do what simple rules
-do reliably. The AI extraction still runs; its semantic picks and these structural picks
-reinforce each other (surfaced separately so the user can judge which pass found what).
+References are English, so character/place/sect names are what the "Detected names" pass is
+after. The job is to find them WITHOUT asking the weak local LLM (that's the point of a
+deterministic pre-pass). The AI extraction still runs; its semantic picks and these
+structural picks reinforce each other (surfaced separately so the user can judge each pass).
 
-Approach (stdlib ``re`` only, offline):
-- Find runs of Capitalized Words (e.g. "Li Changshou", "Azure Cloud Sect"), allowing short
-  connective words inside a run ("of", "the") so "Sect of the Azure Cloud" stays whole.
-- Drop a run that sits at the start of a sentence AND is a single word AND looks like an
-  ordinary sentence-initial capital (a stopword, or seen lowercased elsewhere) — this is the
-  main false-positive source in prose.
-- Drop pure stopwords and single-letter runs.
-- Rank by frequency; a form seen 2+ times is almost certainly a proper noun.
+Primary approach: **spaCy NER** (`en_core_web_sm`). We use named-entity *spans*
+(PERSON/ORG/GPE/FAC/LOC/NORP/EVENT/WORK_OF_ART/LAW), NOT raw POS ``PROPN`` tags — PROPN
+misclassifies ordinary sentence-openers and spaCy's own docs call PROPN-vs-NOUN the tagger's
+weakest spot. NER yields clean multiword spans ("Li Changshou") and naturally drops
+sentence-initial capitals and contractions ("I'm", "Although", "Unfortunately") — the exact
+false positives the old regex pass leaked.
 
-Limitations (acceptable for v1): won't catch lowercase common-noun jargon ("cultivation");
-the AI pass covers those. Fuzzy/alias handling is out of scope.
+Caveat (acceptable, by design): the model is trained on web/news, so it nails character/place
+names but misses lowercase xianxia jargon ("qi refinement", "primordial world"). That's fine —
+the LLM extraction pass covers concept terms; see ``build_extraction_messages``.
+
+Fallback: if spaCy or the model can't be imported/loaded, we fall back to the previous
+deterministic regex pass (``_regex_proper_nouns``) so the app still runs offline without the
+model (a warning is logged once). Same public signature either way.
+
+ponytail: the regex fallback is a known-weaker heuristic (can't judge grammatical role) kept
+only for the no-model case; the NER path is the real one. Upgrade path if the fallback ever
+needs to be the primary again: a larger spaCy model or a trf pipeline.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
+
+logger = logging.getLogger(__name__)
+
+# Entity labels that denote a name we want to surface. Spans with these labels are the clean
+# multiword names NER is good at. We deliberately include ORG/FAC/LAW/WORK_OF_ART because
+# sects/peaks/techniques in translated novels land under those (e.g. "Azure Cloud Sect").
+_NAME_LABELS = {
+    "PERSON", "ORG", "GPE", "FAC", "LOC", "NORP", "EVENT", "WORK_OF_ART", "LAW",
+}
+
+# Leading determiners/connectives to strip from a span ("The Azure Peak" -> "Azure Peak").
+_LEADING_DROP = {"the", "a", "an", "of", "and"}
+
+# Possessive / contraction tail on a token: 's, ', 'll, 'm, 're, 've, 'd (and curly ').
+_APOS_TAIL_RE = re.compile(r"['’](?:s|ll|m|re|ve|d)?$", re.IGNORECASE)
+
+# Module-level singleton. ``False`` means "tried and failed, use fallback"; ``None`` means
+# "not loaded yet". We keep the model loaded for the process lifetime (first load ~0.5s).
+_nlp: object | None = None
+_nlp_failed = False
+
+
+def _get_nlp():
+    """Load the spaCy NER pipeline once, or return ``None`` if unavailable.
+
+    Keeps only the NER-relevant components (``exclude`` the tagger/parser/lemmatizer/etc.) so
+    load is fast and memory small — we only read ``doc.ents``.
+    """
+    global _nlp, _nlp_failed
+    if _nlp is not None:
+        return _nlp
+    if _nlp_failed:
+        return None
+    try:
+        import spacy
+
+        _nlp = spacy.load(
+            "en_core_web_sm",
+            exclude=["tagger", "parser", "lemmatizer", "attribute_ruler", "tok2vec"],
+        )
+        return _nlp
+    except Exception as exc:  # ImportError or model-not-found (OSError) or load error
+        _nlp_failed = True
+        logger.warning(
+            "spaCy NER unavailable (%s); falling back to the regex proper-noun pass. "
+            "Install the model with: python -m spacy download en_core_web_sm",
+            exc,
+        )
+        return None
+
+
+def _clean_span(span_text: str) -> str:
+    """Normalize an entity span into a candidate name.
+
+    - Collapse internal whitespace/newlines (spans can straddle line breaks).
+    - Strip a possessive/contraction tail from the LAST token ("Changshou's" -> "Changshou").
+    - Drop leading determiners/connectives ("The Azure Peak" -> "Azure Peak").
+    - Drop a leading lone pronoun artifact like "I" (from "I'll" / "I'm" if it ever slips in).
+    """
+    tokens = span_text.split()
+    if not tokens:
+        return ""
+    tokens[-1] = _APOS_TAIL_RE.sub("", tokens[-1])
+    tokens = [t for t in tokens if t]
+    while tokens and tokens[0].lower() in _LEADING_DROP:
+        tokens.pop(0)
+    while tokens and tokens[-1].lower() in _LEADING_DROP:
+        tokens.pop()
+    return " ".join(tokens)
+
+
+def _ner_proper_nouns(text: str, *, limit: int) -> list[str]:
+    """spaCy-NER implementation. Caller guarantees ``_get_nlp()`` returned a model."""
+    nlp = _get_nlp()
+    assert nlp is not None  # caller checked
+    doc = nlp(text)
+
+    counts: Counter[str] = Counter()
+    display: dict[str, str] = {}
+    for ent in doc.ents:
+        if ent.label_ not in _NAME_LABELS:
+            continue
+        name = _clean_span(ent.text)
+        # Reject empties, single letters, and all-lowercase spans (NER occasionally tags a
+        # lowercase common noun; a real name here is capitalized).
+        if len(name) <= 1 or not name[0].isupper():
+            continue
+        key = name.casefold()
+        counts[key] += 1
+        display.setdefault(key, name)
+
+    # Frequency desc, then alphabetical for stable output (matches the old contract).
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], display[kv[0]].casefold()))
+    return [display[key] for key, _ in ordered[:limit]]
+
+
+def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
+    """Return likely proper nouns in ``text``, most frequent first.
+
+    Offline and deterministic. Uses spaCy NER when available (clean multiword name spans,
+    no sentence-opener false positives), falling back to a regex pass if the model is absent.
+    De-duplicated case-insensitively; original surface casing preserved; capped at ``limit``.
+    """
+    if not text or not text.strip():
+        return []
+    if _get_nlp() is not None:
+        return _ner_proper_nouns(text, limit=limit)
+    return _regex_proper_nouns(text, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Regex fallback (previous implementation) — used only when spaCy/model is absent.
+# ---------------------------------------------------------------------------
 
 # Words that are capitalized at sentence start / in titles but are rarely proper nouns on
 # their own. Kept small and generic; genre terms are intentionally NOT excluded.
@@ -61,16 +181,13 @@ _CAP_TOKEN = r"[A-Z][A-Za-z0-9-]*(?:['’][A-Za-z]+)?"
 # A run: a capitalized token, then zero+ (connective | capitalized token).
 _RUN_RE = re.compile(rf"{_CAP_TOKEN}(?:\s+(?:{'|'.join(_CONNECTIVES)}|{_CAP_TOKEN}))*")
 
-# Possessive / contraction tail on a token: 's, ', 'll, 'm, 're, 've, 'd (and curly ').
-_APOS_TAIL_RE = re.compile(r"['’](?:s|ll|m|re|ve|d)?$", re.IGNORECASE)
+# Sentence boundary just before a position: start of text, or ., !, ?, newline, quote, colon.
+_SENTENCE_START_RE = re.compile(r"(?:^|[.!?;:\n\r\"“”‘’()\[\]])\s*$")
 
 
 def _strip_apostrophe(token: str) -> str:
     """Drop a possessive/contraction tail: Changshou's -> Changshou, I'm -> I, Sister' -> Sister."""
     return _APOS_TAIL_RE.sub("", token)
-
-# Sentence boundary just before a position: start of text, or ., !, ?, newline, quote, colon.
-_SENTENCE_START_RE = re.compile(r"(?:^|[.!?;:\n\r\"“”‘’()\[\]])\s*$")
 
 
 def _is_sentence_start(text: str, pos: int) -> bool:
@@ -100,24 +217,20 @@ def _trim_run(run: str) -> str:
     return " ".join(tokens)
 
 
-def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
-    """Return likely proper nouns in ``text``, most frequent first.
+def _regex_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
+    """Deterministic regex fallback. Returns likely proper nouns, most frequent first.
 
-    Deterministic and offline. Multi-word names are kept whole. A single capitalized word
-    is only kept if it appears somewhere that is NOT a sentence start, or it recurs — this
-    filters ordinary sentence-initial capitals. Returns the original surface form (first
-    casing seen), de-duplicated case-insensitively.
+    Multi-word names are kept whole. A single capitalized word is only kept if it appears
+    somewhere that is NOT a sentence start, or it recurs — this filters ordinary
+    sentence-initial capitals. Returns the original surface form, de-duplicated
+    case-insensitively.
     """
     if not text or not text.strip():
         return []
 
-    # Track, per normalized form: display form, total count, and whether we ever saw it
-    # in a non-sentence-start position (strong proper-noun signal).
     counts: Counter[str] = Counter()
     display: dict[str, str] = {}
     seen_midsentence: set[str] = set()
-    # Also track which single lowercase words appear, to catch "Dawn" (sentence start) vs
-    # a word that also occurs lowercased ("dawn") — the latter is likely not a name.
     lowercased_words = {m.group(0).lower() for m in re.finditer(r"\b[a-z][\w'’-]*\b", text)}
 
     for m in _RUN_RE.finditer(text):
@@ -127,7 +240,6 @@ def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
         tokens = raw_run.split()
         key = raw_run.casefold()
 
-        # Reject pure stopwords / single letters.
         content_tokens = [t for t in tokens if t.lower() not in _CONNECTIVES]
         if not content_tokens:
             continue
@@ -147,20 +259,14 @@ def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
         is_multiword = len(tokens) > 1
         single = tokens[0] if not is_multiword else ""
 
-        # Keep if: multi-word (strong), OR seen mid-sentence, OR recurs 2+ times.
         keep = is_multiword or key in seen_midsentence or count >= 2
-        # Single-word vetoes (ordinary words merely capitalized at a sentence start):
         if not is_multiword:
             if single.lower() in _STOPWORDS:
                 keep = False
-            # If the same word also appears lowercased and we NEVER saw it mid-sentence,
-            # it's almost certainly a common word at a sentence start — veto even if it
-            # recurs (frequency alone shouldn't rescue "Dawn"/"dawn").
             if single.lower() in lowercased_words and key not in seen_midsentence:
                 keep = False
         if keep:
             results.append((display[key], count))
 
-    # Frequency desc, then alphabetical for stable output.
     results.sort(key=lambda x: (-x[1], x[0].casefold()))
     return [form for form, _ in results[:limit]]

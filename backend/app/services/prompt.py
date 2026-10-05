@@ -192,10 +192,10 @@ def build_extraction_messages(
 ) -> list[dict[str, str]]:
     """Return chat messages for extracting a summary + candidate terms from a reference.
 
-    ``detected_names`` are proper nouns found by the deterministic rule-based pass
-    (field-fix #2). They are passed as a hint so the model doesn't have to rediscover
-    obvious capitalized names and can focus on terminology the rules can't catch (lowercase
-    jargon, concepts). The model is told these are hints, not a required echo.
+    ``detected_names`` are proper nouns found by the spaCy NER pass (Issue 1). They are
+    passed as a hint so the model doesn't rediscover names NER already handles and can focus
+    on terminology NER can't catch (lowercase jargon, skills, concepts). The model is told
+    these are hints, not a required echo.
     """
     lang = _lang_name(source_lang)
     parts = [
@@ -204,8 +204,11 @@ def build_extraction_messages(
     ]
     if detected_names:
         parts.append(
-            "## Already-detected names (rule-based hints — you may reuse any that are real "
-            "terms, and add others the rules missed, especially lowercase concepts)\n"
+            "## Already-detected names (NER has already extracted these proper names — "
+            "character/place/org names are handled, so do NOT just re-list them. Focus your "
+            "candidate_terms on what NER misses: lowercase concepts, skills, techniques, and "
+            "terminology. Add a detected name only if it is a genuinely important recurring "
+            "term.)\n"
             + ", ".join(detected_names)
         )
     parts.append("## Reference chapter\n" + content)

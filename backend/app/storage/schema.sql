@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS reference_chapters (
   title           TEXT NOT NULL,
   content         TEXT NOT NULL,
   created_at      TEXT NOT NULL,
+  -- Parsed from the title at upload (services/chapter_number.py); NULL when the title has
+  -- no recognizable number (volume formats, prologues) — ordering then falls back to
+  -- created_at and the UI can prompt for a manual value.
+  chapter_number  INTEGER,
   -- Derived at upload time (task 13): a style/plot summary and a JSON array of
   -- candidate glossary terms. NULL until extraction has run.
   summary         TEXT,

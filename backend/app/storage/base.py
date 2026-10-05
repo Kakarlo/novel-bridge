@@ -47,6 +47,7 @@ class StorageService(ABC):
         summary: str | None = None,
         candidate_terms: list[str] | None = None,
         detected_names: list[str] | None = None,
+        chapter_number: int | None = None,
     ) -> ReferenceChapter: ...
 
     @abstractmethod

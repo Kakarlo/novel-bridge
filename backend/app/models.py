@@ -42,6 +42,10 @@ class ReferenceChapter(BaseModel):
     title: str
     content: str
     created_at: str
+    # Parsed from the title at upload (services/chapter_number.py). None when the title has
+    # no recognizable chapter number; ordering falls back to created_at and the UI can ask
+    # the user to set one.
+    chapter_number: int | None = None
     # Derived at upload time by the engine's reference extraction (task 13). A short
     # style/plot summary and a list of candidate terms (names/terminology). Both are
     # optional: extraction may not have run yet (e.g. engine was unreachable) until a

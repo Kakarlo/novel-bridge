@@ -64,6 +64,24 @@ def _format_reference(ref: ReferenceChapter) -> str:
     return "\n".join(lines)
 
 
+def _order_newest_first(refs: list[ReferenceChapter]) -> list[ReferenceChapter]:
+    """Order references most-relevant (newest) first for budgeting.
+
+    - References WITH a ``chapter_number`` sort by it, highest first (newest chapter).
+    - References WITHOUT one keep upload order but are placed AFTER the numbered ones, newest
+      upload first (reverse of the created_at-ASC list storage returns).
+
+    Rationale: an explicit chapter number is a more reliable "recency" signal than upload
+    time, and is correct even when chapters are uploaded out of order. Unnumbered references
+    (volume titles, prologues) fall back to the previous upload-order behavior.
+    """
+    numbered = [r for r in refs if r.chapter_number is not None]
+    unnumbered = [r for r in refs if r.chapter_number is None]
+    numbered.sort(key=lambda r: r.chapter_number, reverse=True)  # newest chapter first
+    unnumbered.reverse()  # newest upload first (list is created_at ASC)
+    return numbered + unnumbered
+
+
 def build(
     glossary: list[GlossaryEntry],
     references: list[ReferenceChapter],
@@ -93,11 +111,17 @@ def build(
 
     allowed_chars = remaining * _CHARS_PER_TOKEN
 
-    # Newest-first: the most recent chapters are most relevant for continuity.
+    # Newest-first: the most recent chapters are most relevant for continuity. "Newest" is
+    # the highest chapter_number when known (correct even if chapters were uploaded out of
+    # order); references without a parsed number fall back to upload order (their position in
+    # `usable`, which storage returns created_at ASC). Numbered chapters come first (newest
+    # number first); unnumbered ones trail in reverse upload order.
+    ordered = _order_newest_first(usable)
+
     blocks: list[str] = []
     used_chars = 0
     truncated = False
-    for ref in reversed(usable):
+    for ref in ordered:
         block = _format_reference(ref)
         sep = 2 if blocks else 0  # "\n\n" between blocks
         if used_chars + len(block) + sep <= allowed_chars:

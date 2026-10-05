@@ -16,6 +16,7 @@ def _ref(
     terms: list[str] | None = None,
     title: str = "Ch",
     content: str = "raw reference body that must never be fed to the model",
+    chapter_number: int | None = None,
 ) -> ReferenceChapter:
     return ReferenceChapter(
         id="r",
@@ -23,6 +24,7 @@ def _ref(
         title=title,
         content=content,
         created_at="now",
+        chapter_number=chapter_number,
         summary=summary or None,
         candidate_terms=terms or [],
     )
@@ -69,6 +71,37 @@ def test_newest_references_first():
         "OLD summary"
     )
     assert out.truncated is False
+
+
+def test_chapter_number_orders_newest_first_regardless_of_upload_order():
+    # Uploaded out of chapter order: ch2 first, then ch1, then ch3. Ordering must use the
+    # chapter number (newest=highest first: 3,2,1), NOT the upload/list order.
+    ch2 = _ref(summary="SUMMARY_TWO", title="Chapter 2", chapter_number=2)
+    ch1 = _ref(summary="SUMMARY_ONE", title="Chapter 1", chapter_number=1)
+    ch3 = _ref(summary="SUMMARY_THREE", title="Chapter 3", chapter_number=3)
+    out = cb.build([], [ch2, ch1, ch3], "raw", budget_tokens=10_000)
+    ctx = out.reference_context
+    assert ctx.index("SUMMARY_THREE") < ctx.index("SUMMARY_TWO") < ctx.index("SUMMARY_ONE")
+
+
+def test_numbered_chapters_precede_unnumbered():
+    # A numbered chapter is a stronger recency signal than an unnumbered one, so numbered
+    # chapters come first; unnumbered (e.g. a prologue/volume title) trail.
+    numbered = _ref(summary="NUMBERED", title="Chapter 5", chapter_number=5)
+    unnumbered = _ref(summary="UNNUMBERED", title="Prologue", chapter_number=None)
+    out = cb.build([], [unnumbered, numbered], "raw", budget_tokens=10_000)
+    ctx = out.reference_context
+    assert ctx.index("NUMBERED") < ctx.index("UNNUMBERED")
+
+
+def test_unnumbered_fall_back_to_reverse_upload_order():
+    # With no chapter numbers at all, behavior matches the old newest-upload-first: the last
+    # item in the (created_at ASC) list is surfaced first.
+    first_up = _ref(summary="FIRST_UP", title="A", chapter_number=None)
+    last_up = _ref(summary="LAST_UP", title="B", chapter_number=None)
+    out = cb.build([], [first_up, last_up], "raw", budget_tokens=10_000)
+    ctx = out.reference_context
+    assert ctx.index("LAST_UP") < ctx.index("FIRST_UP")
 
 
 def test_oldest_summaries_dropped_when_budget_tight():

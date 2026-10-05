@@ -20,6 +20,7 @@ from app.models import (
     TermMatch,
     Translation,
 )
+from app.services.chapter_number import parse_chapter_number
 from app.services.noun_extract import extract_proper_nouns
 from app.services.pronoun_check import PronounFlag, find_pronoun_drift
 from app.services.source_terms import extract_source_terms
@@ -86,6 +87,7 @@ async def add_reference(
     # If engine extraction fails (e.g. unreachable), keep the reference with the rule-based
     # names anyway; the user can resummarize later.
     detected_names = extract_proper_nouns(body.content)
+    chapter_number = parse_chapter_number(body.title)
     summary: str | None = None
     candidate_terms: list[str] = []
     # Names-only mode (body.extract_summary == False): skip the slow AI extraction entirely
@@ -102,7 +104,13 @@ async def add_reference(
             summary = None
             candidate_terms = []
     return store.add_reference(
-        pid, body.title, body.content, summary, candidate_terms, detected_names
+        pid,
+        body.title,
+        body.content,
+        summary,
+        candidate_terms,
+        detected_names,
+        chapter_number,
     )
 
 

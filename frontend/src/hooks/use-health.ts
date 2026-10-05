@@ -15,7 +15,7 @@ export type HealthState =
   | { kind: "ok"; data: Health }
   | { kind: "unreachable"; data: Health | null };
 
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 
 /**
  * Light health poll of GET /api/health for the model-status indicator.

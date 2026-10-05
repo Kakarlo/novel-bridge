@@ -54,6 +54,10 @@ class SQLiteStorage(StorageService):
             conn.execute(
                 "ALTER TABLE reference_chapters ADD COLUMN detected_names TEXT"
             )
+        if "chapter_number" not in cols:
+            conn.execute(
+                "ALTER TABLE reference_chapters ADD COLUMN chapter_number INTEGER"
+            )
 
     # --- projects ---
     def list_projects(self) -> list[Project]:
@@ -123,6 +127,7 @@ class SQLiteStorage(StorageService):
         summary: str | None = None,
         candidate_terms: list[str] | None = None,
         detected_names: list[str] | None = None,
+        chapter_number: int | None = None,
     ) -> ReferenceChapter:
         ref = ReferenceChapter(
             id=new_id(),
@@ -130,6 +135,7 @@ class SQLiteStorage(StorageService):
             title=title,
             content=content,
             created_at=utcnow_iso(),
+            chapter_number=chapter_number,
             summary=summary,
             candidate_terms=candidate_terms or [],
             detected_names=detected_names or [],
@@ -137,15 +143,16 @@ class SQLiteStorage(StorageService):
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO reference_chapters"
-                " (id, project_id, title, content, created_at, summary, candidate_terms,"
-                "  detected_names)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                " (id, project_id, title, content, created_at, chapter_number, summary,"
+                "  candidate_terms, detected_names)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     ref.id,
                     ref.project_id,
                     ref.title,
                     ref.content,
                     ref.created_at,
+                    ref.chapter_number,
                     ref.summary,
                     json.dumps(ref.candidate_terms, ensure_ascii=False),
                     json.dumps(ref.detected_names, ensure_ascii=False),

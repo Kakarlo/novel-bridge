@@ -56,6 +56,69 @@ def build_translation_system_prompt() -> str:
     return TRANSLATION_SYSTEM_PROMPT
 
 
+def _prompt_glossary_entries(req: TranslationRequest) -> list:
+    """The glossary entries that may steer the prompt (task 14, Phase 4).
+
+    Only entries that are safe to assert as authoritative reach the model:
+    - any entry with a ``source_term`` (a classic paired mapping), OR
+    - an English-first entry whose ``status`` is ``approved``.
+
+    ``candidate`` (not yet reviewed) and ``rejected`` English-only entries are excluded —
+    the user hasn't endorsed them, so the model must not treat them as preferred spellings.
+    Occurrence detection still runs over the full glossary elsewhere, so candidates can
+    still be surfaced for approval.
+    """
+    return [
+        e for e in req.glossary if e.source_term or e.status == "approved"
+    ]
+
+
+def _format_glossary_blocks(entries: list) -> list[str]:
+    """Render up to two glossary blocks: authoritative source=>English pairs, and a
+    category/gender-aware 'preferred English spellings' list for English-first entries."""
+    pairs = [e for e in entries if e.source_term]
+    english_only = [e for e in entries if not e.source_term]
+
+    blocks: list[str] = []
+
+    if pairs:
+        lines = "\n".join(
+            f"- {e.source_term} => {e.surface_form}" + (f"  ({e.note})" if e.note else "")
+            for e in pairs
+        )
+        blocks.append(
+            "## Glossary (authoritative term mappings — translate the source term exactly "
+            f"as the mapped English)\n{lines}"
+        )
+
+    if english_only:
+        # Group by category so a weak model gets structure. Characters carry gender inline
+        # (steers zh->en pronoun consistency); titles are grouped; terms are a plain list.
+        by_cat: dict[str, list] = {"character": [], "title": [], "term": []}
+        for e in english_only:
+            by_cat.get(e.category, by_cat["term"]).append(e)
+
+        sub: list[str] = []
+        for e in by_cat["character"]:
+            gender = f" ({e.gender})" if e.gender and e.gender != "unknown" else ""
+            note = f" — {e.note}" if e.note else ""
+            sub.append(f"- {e.surface_form}{gender}{note}  [character]")
+        for e in by_cat["title"]:
+            note = f" — {e.note}" if e.note else ""
+            sub.append(f"- {e.surface_form}{note}  [title]")
+        for e in by_cat["term"]:
+            note = f" — {e.note}" if e.note else ""
+            sub.append(f"- {e.surface_form}{note}")
+
+        blocks.append(
+            "## Preferred English spellings (use these exact spellings for these names and "
+            "terms; for characters, keep pronouns consistent with the stated gender)\n"
+            + "\n".join(sub)
+        )
+
+    return blocks
+
+
 def build_translation_messages(req: TranslationRequest) -> list[dict[str, str]]:
     """Return chat messages (system + user) for a translation request.
 
@@ -65,20 +128,9 @@ def build_translation_messages(req: TranslationRequest) -> list[dict[str, str]]:
     lang = _lang_name(req.source_lang)
     parts: list[str] = []
 
-    if req.glossary:
-        # Entries with a source_term render as an authoritative pair; English-only entries
-        # render as a preferred spelling. (Phase 4 expands this into category/gender-aware
-        # blocks; this keeps the paired path working after the English-first redefinition.)
-        glossary_lines = "\n".join(
-            (
-                f"- {e.source_term} => {e.surface_form}"
-                if e.source_term
-                else f"- {e.surface_form}"
-            )
-            + (f"  ({e.note})" if e.note else "")
-            for e in req.glossary
-        )
-        parts.append(f"## Glossary (authoritative term mappings)\n{glossary_lines}")
+    # Only approved / paired entries steer the prompt (Phase 4). Rendered as up to two
+    # blocks: authoritative pairs, and a category/gender-aware preferred-spellings list.
+    parts.extend(_format_glossary_blocks(_prompt_glossary_entries(req)))
 
     ref = req.reference_context.strip()
     if ref:

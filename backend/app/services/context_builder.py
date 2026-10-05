@@ -41,6 +41,10 @@ class BuiltContext:
 def _glossary_tokens(glossary: list[GlossaryEntry]) -> int:
     total = 0
     for e in glossary:
+        # Only entries that actually reach the prompt (paired, or approved English-first)
+        # consume budget — mirror the prompt builder's filter (Phase 4).
+        if not (e.source_term or e.status == "approved"):
+            continue
         total += estimate_tokens(e.surface_form)
         if e.source_term:
             total += estimate_tokens(e.source_term)

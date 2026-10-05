@@ -46,7 +46,7 @@ def test_user_message_handles_no_reference():
     assert "none available" in user.lower()
 
 
-def test_glossary_rendered_when_present():
+def test_paired_entry_rendered_as_authoritative_pair():
     g = [
         GlossaryEntry(
             id="g1", project_id="p", surface_form="Lin", source_term="林",
@@ -57,12 +57,55 @@ def test_glossary_rendered_when_present():
     assert "林 => Lin" in msgs[1]["content"]
 
 
-def test_english_only_glossary_rendered_as_preferred_spelling():
-    g = [GlossaryEntry(id="g1", project_id="p", surface_form="Fang Yuan")]
+def test_approved_english_only_rendered_as_preferred_spelling():
+    g = [
+        GlossaryEntry(id="g1", project_id="p", surface_form="Fang Yuan", status="approved")
+    ]
     msgs = prompt.build_translation_messages(_req(glossary=g))
     content = msgs[1]["content"]
+    assert "Preferred English spellings" in content
     assert "Fang Yuan" in content
     assert "=> Fang Yuan" not in content  # no bogus pair without a source term
+
+
+def test_candidate_and_rejected_english_terms_excluded_from_prompt():
+    g = [
+        GlossaryEntry(id="c", project_id="p", surface_form="Candidate Name", status="candidate"),
+        GlossaryEntry(id="r", project_id="p", surface_form="Rejected Name", status="rejected"),
+        GlossaryEntry(id="a", project_id="p", surface_form="Approved Name", status="approved"),
+    ]
+    content = prompt.build_translation_messages(_req(glossary=g))[1]["content"]
+    assert "Approved Name" in content
+    assert "Candidate Name" not in content  # not endorsed -> excluded
+    assert "Rejected Name" not in content
+
+
+def test_character_gender_shown_and_titles_grouped():
+    g = [
+        GlossaryEntry(
+            id="c", project_id="p", surface_form="Fang Yuan", status="approved",
+            category="character", gender="male",
+        ),
+        GlossaryEntry(
+            id="t", project_id="p", surface_form="Senior Brother", status="approved",
+            category="title",
+        ),
+    ]
+    content = prompt.build_translation_messages(_req(glossary=g))[1]["content"]
+    assert "Fang Yuan (male)" in content
+    assert "[character]" in content
+    assert "Senior Brother" in content and "[title]" in content
+
+
+def test_candidate_paired_entry_still_reaches_prompt():
+    # A paired entry is authoritative regardless of status (it has a source mapping).
+    g = [
+        GlossaryEntry(
+            id="g", project_id="p", surface_form="Lin", source_term="林", status="candidate"
+        )
+    ]
+    content = prompt.build_translation_messages(_req(glossary=g))[1]["content"]
+    assert "林 => Lin" in content
 
 
 def test_extraction_messages_request_json_summary_and_terms():

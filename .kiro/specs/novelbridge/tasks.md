@@ -211,10 +211,14 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
       - `getTranslationMatches` + `review_terms`/`TermMatch`/`matches` types. API contract in
         `tech.md` updated. 63 backend tests pass; frontend builds clean.
         Note: opt-in review flag is a per-request bool (stateless; streaming path untouched when off).
-    - 14.4 Prompt integration: approved terms → a "preferred spellings" block
-      (category/gender-aware); keep the paired `source => target` block for entries with a
-      `source_term`. Atomic extraction + matching engine tasks. Context-builder budgeting +
-      prompt tests. (The reading-quality payoff.)
+    - [x] 14.4 Prompt integration: `build_translation_messages` now filters to prompt-worthy
+          entries (any paired entry, or an `approved` English-first entry — `candidate`/`rejected`
+          English-only are excluded) and renders up to two blocks: authoritative `source => English`
+          pairs, and a category/gender-aware "Preferred English spellings" list (characters carry
+          gender inline for pronoun consistency, titles grouped, terms plain). `context_builder`
+          budget mirrors the same filter. Matching stays stdlib (no engine call); the source-term
+          confirmation engine task is deferred. 77 backend tests pass (6 prompt tests cover
+          filtering + blocks).
     - 14.5 Glossary UI: English-only add with category + gender, status badges, approve/reject,
       status filter; keep the classic paired editor. Opt-in review toggle.
     - 14.6 In-context review UI (**lightweight, opt-in**): translate-tab review panel +

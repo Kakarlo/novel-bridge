@@ -200,8 +200,10 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
           added `add_term` (upsert-merge) and `set_term_status`, made `update_glossary`
           keyword-based, kept classic paired CRUD; updated prompt/context-builder/mock-engine and the
           glossary + reference-promote UI to the new shape. 48 backend tests pass; frontend builds clean.
-    - 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`, whole-word
-      case-insensitive, pure stdlib) + offline unit tests.
+    - [x] 14.2 Occurrence detection: `services/term_match.py` (`find_occurrences`, whole-word
+          case-insensitive via `re` lookarounds, multi-word phrases, regex-safe, detection-only)
+          returning `TermMatch` (term_id/surface_form/status/category/count/snippets), sorted by
+          count desc. New `TermMatch` model. 12 offline unit tests; full suite 60 pass.
     - 14.3 API: `POST /projects/{id}/glossary/english`, `PATCH /glossary/{id}/status`, matches
       folded into the translate `done` event (behind the opt-in review flag) +
       `GET /translations/{tid}/matches`; API tests on the mock engine.

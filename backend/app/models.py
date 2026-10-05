@@ -86,6 +86,22 @@ class Translation(BaseModel):
     created_at: str
 
 
+class TermMatch(BaseModel):
+    """One glossary term's occurrences found in a translation's output (task 14.2).
+
+    Produced by ``services.term_match.find_occurrences`` for the in-context review loop.
+    Detection only — it never rewrites the translation. ``snippets`` are short context
+    windows around occurrences for the review UI; ``count`` is the total occurrences.
+    """
+
+    term_id: str
+    surface_form: str
+    status: GlossaryStatus
+    category: GlossaryCategory
+    count: int
+    snippets: list[str] = Field(default_factory=list)
+
+
 # --- API request models -----------------------------------------------------
 
 

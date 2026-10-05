@@ -131,6 +131,84 @@ def test_ner_limit_respected():
 
 
 # ---------------------------------------------------------------------------
+# Pipeline additions (Task 1): alias folding, plural normalization, domain vocab,
+# metadata cleanup, and a regression guard. Folding/plural/domain exercise the NER
+# path; metadata + regression are path-independent.
+# ---------------------------------------------------------------------------
+
+@ner
+def test_pipeline_alias_folding_suffix_only():
+    # "Changshou" (given name) folds into "Li Changshou"; the surname "Li" must NOT fold.
+    text = (
+        "Li Changshou entered the hall. Li Changshou bowed. "
+        "The elder called Changshou forward. Changshou obeyed. "
+        "Li Changsheng, his brother, watched from the Li family seat."
+    )
+    names = extract_proper_nouns(text)
+    assert "Li Changshou" in names
+    assert "Changshou" not in names  # trailing-token alias folded away
+    # A leading surname shared by siblings is never folded into one of them.
+    assert "Li Changsheng" in names
+
+
+@ner
+def test_pipeline_singular_plural_normalization():
+    # When both singular and plural appear, the plural folds into the singular base form.
+    # "Spirit Stone"/"Spirit Stones" are both domain-vocab entries, so both reliably enter
+    # the candidate pool; the normalizer must collapse the plural into the singular.
+    text = (
+        "He paid one Spirit Stone for bread. A single Spirit Stone was not much. "
+        "Later he earned a sack of Spirit Stones and spent all his Spirit Stones at once."
+    )
+    names = extract_proper_nouns(text)
+    assert "Spirit Stone" in names
+    assert "Spirit Stones" not in names
+
+
+@ner
+def test_pipeline_domain_vocab_extracted():
+    # Lowercase genre jargon spaCy won't tag as an entity still surfaces via the domain union.
+    text = "He began qi refinement, broke through to Foundation Establishment, formed a Golden Core."
+    names = extract_proper_nouns(text)
+    lowered = {n.casefold() for n in names}
+    assert "qi refinement" in lowered
+    assert "foundation establishment" in lowered
+    assert "golden core" in lowered
+
+
+def test_pipeline_metadata_filtering():
+    # Credit/nav boilerplate must not surface as names, but real prose names must survive.
+    # Path-independent: runs through the public API on whichever backend is available.
+    text = (
+        "Translator: John Smith\n"
+        "Editor: Jane Doe\n"
+        "T/N: this chapter was hard.\n"
+        "Previous Chapter | Next Chapter\n"
+        "Atlas Studios\n\n"
+        "Fang Yuan walked into the hall. Fang Yuan drew his blade."
+    )
+    names = extract_proper_nouns(text)
+    assert any("Fang Yuan" == n for n in names)
+    for junk in ["John Smith", "Jane Doe", "Atlas Studios", "Previous Chapter", "Next Chapter"]:
+        assert junk not in names
+
+
+def test_pipeline_regression_existing_behavior_preserved():
+    # The core prior guarantees still hold through the full pipeline: multiword names kept
+    # whole, recurring names surfaced, de-duplicated, limit respected. Public API.
+    text = (
+        "Li Changshou raised his hand. Li Changshou smiled. "
+        "However the storm came. Although skies cleared, Li Changshou pressed on."
+    )
+    names = extract_proper_nouns(text)
+    assert "Li Changshou" in names
+    assert "However" not in names
+    assert "Although" not in names
+    assert len(names) == len(set(names))  # de-duplicated
+    assert len(extract_proper_nouns(text, limit=1)) <= 1
+
+
+# ---------------------------------------------------------------------------
 # Fallback layer — deterministic regex, used when the model is absent. Always runs.
 # ---------------------------------------------------------------------------
 

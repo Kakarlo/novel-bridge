@@ -1,0 +1,78 @@
+# Title / honorific domain vocabulary (one term per line, case-insensitive match).
+# UNIONed with spaCy NER results in noun_extract.py. Titles vary by reader preference
+# (师兄 -> "Senior Brother" vs "Shixiong"), so this list is meant to be edited per project/genre.
+# Blank lines and lines starting with '#' are ignored. Match is exact whole-phrase,
+# case-insensitive.
+#
+# Note: bare "Elder" is intentionally omitted — it's so common it matches on nearly every
+# chapter and drowns the signal. Add it back here if you want it for a specific project.
+
+# Seniority
+
+Senior Brother
+Senior Sister
+Junior Brother
+Junior Sister
+Martial Brother
+Martial Sister
+Martial Uncle
+Martial Aunt
+Martial Granduncle
+Martial Grandmaster
+Fellow Daoist
+Dao Friend
+
+# Sect Leadership
+
+Sect Master
+Sect Leader
+Peak Master
+Hall Master
+Grand Elder
+Supreme Elder
+Patriarch
+Matriarch
+Ancestor
+Grand Ancestor
+
+# Protectors / Officials
+
+Dao Protector
+Sect Protector
+Guardian
+Enforcer
+
+# Family / Clan Titles
+
+Young Master
+Young Mistress
+Young Lady
+Young Lord
+
+# Disciple Titles
+
+Core Disciple
+Inner Disciple
+Outer Disciple
+True Disciple
+Personal Disciple
+Legacy Disciple
+
+# Holy Land / Sacred Land Titles
+
+Saint Son
+Saintess
+Holy Son
+Holy Maiden
+
+# Royal Titles
+
+Crown Prince
+Crown Princess
+Prince
+Princess
+
+# Miscellaneous
+
+Honored Guest
+Guest Elder

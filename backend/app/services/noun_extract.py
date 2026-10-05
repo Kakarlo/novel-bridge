@@ -23,6 +23,20 @@ model (a warning is logged once). Same public signature either way.
 ponytail: the regex fallback is a known-weaker heuristic (can't judge grammatical role) kept
 only for the no-model case; the NER path is the real one. Upgrade path if the fallback ever
 needs to be the primary again: a larger spaCy model or a trf pipeline.
+
+Deterministic pipeline (all offline, no LLM):
+
+    reference text
+      -> metadata cleanup   (strip Translator:/Editor:/nav links before NER)
+      -> spaCy NER          (narrow name labels)      [regex fallback if no model]
+      -> alias folding      (fold "Changshou" into "Li Changshou", suffix-only)
+      -> plural normalize    ("Elders" -> "Elder" when the singular is present)
+      -> domain vocab union  (lowercase genre jargon from app/data/*.txt)
+      -> frequency ranking   (frequency is a RANKING signal, not a hard filter)
+      -> top-N
+
+Metadata cleanup and the domain-vocab union run on BOTH paths; alias folding and plural
+normalization enrich the NER path (the real one) only.
 """
 
 from __future__ import annotations
@@ -30,8 +44,92 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_DATA_DIR = Path(__file__).parent.parent / "data"
+
+# ---------------------------------------------------------------------------
+# Metadata cleanup — strip translation boilerplate BEFORE NER sees the text.
+# Scanlation/MTL dumps carry "Translator: X", "T/N:", chapter-nav links, studio
+# credits — all of which NER happily tags as PERSON/ORG and leaks into names.
+# Deterministic line/phrase removal; applied to both the NER and regex paths.
+# ---------------------------------------------------------------------------
+
+# A line whose content STARTS with one of these labels (optionally bulleted) is dropped
+# whole — it's a credit line, not prose. Case-insensitive, tolerant of surrounding space.
+_METADATA_LINE_LABELS = (
+    "translator", "translated by", "editor", "edited by", "proofreader",
+    "proofread by", "tl", "t/n", "tn", "raw provider", "raws", "typesetter",
+)
+_METADATA_LINE_RE = re.compile(
+    r"(?im)^\s*[-*>]*\s*(?:" + "|".join(re.escape(l) for l in _METADATA_LINE_LABELS) + r")\s*[:：].*$"
+)
+
+# Standalone navigation / credit PHRASES removed wherever they appear (not just line-start),
+# since they're often inline links. Whole-phrase, case-insensitive.
+_METADATA_PHRASES = (
+    "previous chapter", "next chapter", "table of contents", "atlas studios",
+)
+_METADATA_PHRASE_RE = re.compile(
+    r"(?i)\b(?:" + "|".join(re.escape(p) for p in _METADATA_PHRASES) + r")\b"
+)
+
+
+def _strip_metadata(text: str) -> str:
+    """Remove translation metadata (credit lines, nav links) before extraction."""
+    text = _METADATA_LINE_RE.sub("", text)
+    text = _METADATA_PHRASE_RE.sub("", text)
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Domain vocabulary — lowercase genre jargon spaCy NER can't tag (character/place NER
+# is trained on web/news). Loaded from user-editable plain-text files, matched exact
+# whole-phrase case-insensitively, then UNIONed with NER/regex results.
+# ---------------------------------------------------------------------------
+
+_DOMAIN_FILES = ("cultivation_terms.txt", "title_terms.txt")
+# (display_form, compiled whole-phrase matcher). Built once, lazily.
+_domain_terms: list[tuple[str, re.Pattern[str]]] | None = None
+
+
+def _load_domain_terms() -> list[tuple[str, re.Pattern[str]]]:
+    """Load + compile domain vocabulary once. Missing files degrade to no terms."""
+    global _domain_terms
+    if _domain_terms is not None:
+        return _domain_terms
+    terms: dict[str, str] = {}  # casefold -> display form (first wins)
+    for fname in _DOMAIN_FILES:
+        path = _DATA_DIR / fname
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning("domain vocab file %s unavailable (%s); skipping", path, exc)
+            continue
+        for line in raw.splitlines():
+            term = line.strip()
+            if not term or term.startswith("#"):
+                continue
+            terms.setdefault(term.casefold(), term)
+    _domain_terms = [
+        # \b around the phrase; collapse internal spaces into \s+ so multi-word phrases
+        # match across newlines/extra spaces too.
+        (display, re.compile(r"\b" + r"\s+".join(re.escape(w) for w in display.split()) + r"\b", re.IGNORECASE))
+        for display in terms.values()
+    ]
+    return _domain_terms
+
+
+def _domain_matches(text: str) -> Counter[str]:
+    """Count domain-vocabulary phrase occurrences in ``text`` (keyed by display form)."""
+    counts: Counter[str] = Counter()
+    for display, pat in _load_domain_terms():
+        n = len(pat.findall(text))
+        if n:
+            counts[display] += n
+    return counts
 
 # Entity labels that denote a name we want to surface. Kept DELIBERATELY NARROW: character,
 # place, org, and facility names cluster in these five. We tried the broader set
@@ -144,8 +242,85 @@ def _is_name_like(name: str) -> bool:
     return True
 
 
+def _fold_aliases(counts: Counter[str], display: dict[str, str]) -> None:
+    """Fold a bare trailing-token alias into its longer multiword name, IN PLACE.
+
+    spaCy NER often returns both "Li Changshou" and the lone fragment "Changshou". When a
+    single-token candidate is the LAST token of exactly one multiword candidate, it's almost
+    always that character referred to by given name — fold its frequency in and drop it.
+
+    Conservative by design:
+    - Suffix only. We fold "Changshou" into "Li Changshou" (trailing token) but NEVER "Li"
+      (leading surname), because a leading token is shared across siblings (Li Changshou,
+      Li Changsheng) and folding it would merge distinct people.
+    - Ambiguity veto: if a fragment is the trailing token of MORE than one multiword name, we
+      can't tell which, so we leave it alone.
+
+    ``counts``/``display`` are keyed by casefold; mutated in place.
+
+    ponytail: trailing-token only, single-owner only — a heuristic with a known ceiling
+    (won't catch nicknames or mid-name aliases). Upgrade path: alias metadata from the engine.
+    """
+    multiword = {k: display[k].split() for k in counts if len(display[k].split()) > 1}
+    for key in list(counts):
+        if len(display[key].split()) != 1:
+            continue  # only single-token candidates are alias fragments
+        owners = [mk for mk, toks in multiword.items() if toks[-1].casefold() == key]
+        if len(owners) == 1:  # exactly one owner → unambiguous fold
+            counts[owners[0]] += counts.pop(key)
+            display.pop(key, None)
+
+
+def _normalize_plurals(counts: Counter[str], display: dict[str, str]) -> None:
+    """Fold a regular plural into its singular when BOTH are present, IN PLACE.
+
+    "Elder"/"Elders", "Spirit Stone"/"Spirit Stones" — NER/domain matching can surface both;
+    collapse the plural into the singular so the glossary candidate is the base form. Only
+    folds when the singular already exists as its own candidate (conservative: we don't invent
+    a singular that never appeared). Handles -s and -es; last word only for multiword names.
+    """
+    def _singular_key(key: str) -> str | None:
+        words = key.split()
+        last = words[-1]
+        if last.endswith("es") and len(last) > 3:
+            cand = " ".join(words[:-1] + [last[:-2]])
+            if cand in counts:
+                return cand
+        if last.endswith("s") and not last.endswith("ss") and len(last) > 2:
+            cand = " ".join(words[:-1] + [last[:-1]])
+            if cand in counts:
+                return cand
+        return None
+
+    for key in list(counts):
+        if key not in counts:  # may have been popped
+            continue
+        sing = _singular_key(key)
+        if sing and sing != key:
+            counts[sing] += counts.pop(key)
+            display.pop(key, None)
+
+
+def _merge_domain(counts: Counter[str], display: dict[str, str], text: str) -> None:
+    """UNION domain-vocabulary matches into the candidate pool, IN PLACE."""
+    for term, n in _domain_matches(text).items():
+        key = term.casefold()
+        counts[key] += n
+        display.setdefault(key, term)
+
+
+def _rank(counts: Counter[str], display: dict[str, str], limit: int) -> list[str]:
+    """Frequency desc, then alphabetical (stable, matches the old contract)."""
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], display[kv[0]].casefold()))
+    return [display[key] for key, _ in ordered[:limit]]
+
+
 def _ner_proper_nouns(text: str, *, limit: int) -> list[str]:
-    """spaCy-NER implementation. Caller guarantees ``_get_nlp()`` returned a model."""
+    """spaCy-NER implementation + deterministic pipeline. Caller guarantees a loaded model.
+
+    Pipeline (all offline, no LLM): NER spans → clean/name-filter → alias folding →
+    plural normalization → domain-vocab union → frequency ranking → top-N.
+    """
     nlp = _get_nlp()
     assert nlp is not None  # caller checked
     doc = nlp(text)
@@ -162,9 +337,12 @@ def _ner_proper_nouns(text: str, *, limit: int) -> list[str]:
         counts[key] += 1
         display.setdefault(key, name)
 
-    # Frequency desc, then alphabetical for stable output (matches the old contract).
-    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], display[kv[0]].casefold()))
-    return [display[key] for key, _ in ordered[:limit]]
+    # Union domain vocab BEFORE folding/normalizing so those stages see the full pool
+    # (otherwise a plural re-introduced by the domain union escapes normalization).
+    _merge_domain(counts, display, text)
+    _fold_aliases(counts, display)
+    _normalize_plurals(counts, display)
+    return _rank(counts, display, limit)
 
 
 def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
@@ -176,6 +354,7 @@ def extract_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
     """
     if not text or not text.strip():
         return []
+    text = _strip_metadata(text)
     if _get_nlp() is not None:
         return _ner_proper_nouns(text, limit=limit)
     return _regex_proper_nouns(text, limit=limit)
@@ -309,5 +488,12 @@ def _regex_proper_nouns(text: str, *, limit: int = 30) -> list[str]:
         if keep:
             results.append((display[key], count))
 
-    results.sort(key=lambda x: (-x[1], x[0].casefold()))
-    return [form for form, _ in results[:limit]]
+    # UNION domain vocabulary (shared stage: NER path does the same via _merge_domain).
+    kept: Counter[str] = Counter()
+    kept_display: dict[str, str] = {}
+    for form, count in results:
+        k = form.casefold()
+        kept[k] = count
+        kept_display[k] = form
+    _merge_domain(kept, kept_display, text)
+    return _rank(kept, kept_display, limit)

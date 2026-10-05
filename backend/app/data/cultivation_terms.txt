@@ -1,0 +1,201 @@
+# Cultivation / xianxia domain vocabulary (one term per line, case-insensitive match).
+# These are UNIONed with the spaCy NER results in noun_extract.py — spaCy misses lowercase
+# genre jargon ("qi refinement"), so this file backfills it deterministically.
+# Edit freely: blank lines and lines starting with '#' are ignored. Order doesn't matter.
+# Match is exact whole-phrase, case-insensitive; multi-word phrases are matched as a unit.
+
+# Cultivation Realms
+
+Qi Refinement
+Foundation Establishment
+Foundation Building
+Core Formation
+Golden Core
+Nascent Soul
+Soul Formation
+Spirit Severing
+Dao Seeking
+Mahayana
+Tribulation Transcendent
+Earth Immortal
+Heavenly Immortal
+True Immortal
+Profound Immortal
+Golden Immortal
+Immortal King
+Immortal Emperor
+Immortal Venerable
+Immortal Monarch
+
+# Cultivation Concepts
+
+Spiritual Qi
+Spiritual Energy
+Immortal Qi
+True Qi
+Origin Qi
+Essence Qi
+Yin Qi
+Yang Qi
+Great Dao
+Heavenly Dao
+Grand Dao
+Dao Heart
+Dao Intent
+Dao Seed
+Cultivation
+Cultivation Base
+Comprehension
+Enlightenment
+Karma
+Merit
+Fate
+Destiny
+Heaven's Will
+World Law
+Natural Law
+Fortuitous Encounter
+
+# Body / Soul
+
+Dantian
+Meridian
+Meridians
+Spirit Root
+Spiritual Root
+Heavenly Root
+Earthly Root
+Innate Spirit Root
+Body Tempering
+Body Refinement
+Body Forging
+Body Cultivation
+Soul Cultivation
+Physique
+Immortal Physique
+Sacred Physique
+Divine Physique
+Divine Body
+Primordial Spirit
+True Spirit
+Divine Soul
+Soul Sea
+Sea of Consciousness
+Consciousness Sea
+Soul Fragment
+Soul Lamp
+
+# Resources
+
+Spirit Stone
+Spirit Stones
+Immortal Stone
+Immortal Stones
+Spirit Crystal
+Spirit Crystals
+Immortal Crystal
+Immortal Crystals
+Spirit Herb
+Spirit Herbs
+Spiritual Medicine
+Heavenly Treasure
+Earthly Treasure
+Natural Treasure
+Rare Treasure
+Medicinal Pill
+Medicinal Pills
+Alchemy Furnace
+Spirit Spring
+Spirit Vein
+Spirit Mine
+
+# Alchemy / Crafting
+
+Alchemy
+Alchemist
+Pill Refinement
+Weapon Refinement
+Artifact Refinement
+Talisman
+Talisman Master
+Array Master
+Formation Master
+
+# Combat
+
+Divine Sense
+Spiritual Sense
+Sword Intent
+Blade Intent
+Saber Intent
+Killing Intent
+Battle Intent
+Sword Heart
+Sword Domain
+Domain
+Formation
+Array Formation
+Restriction
+Seal
+Forbidden Technique
+Secret Art
+Divine Ability
+Divine Power
+Mystic Art
+Movement Technique
+Cultivation Technique
+Manual
+
+# Tribulations
+
+Tribulation
+Heavenly Tribulation
+Lightning Tribulation
+Heart Devil
+Heart Demon
+Inner Demon
+Dao Tribulation
+Immortal Tribulation
+
+# Organizations
+
+Immortal Sect
+Sacred Land
+Holy Land
+Ancient Clan
+Great Clan
+Royal Clan
+Noble Clan
+True Disciple
+Personal Disciple
+Legacy Disciple
+
+# Creatures
+
+Spirit Beast
+Spirit Beasts
+Demonic Beast
+Demonic Beasts
+Monster Beast
+Monster Beasts
+Ancient Beast
+Ancient Beasts
+Divine Beast
+Divine Beasts
+True Dragon
+True Phoenix
+Heavenly Demon
+
+# Weapons / Artifacts
+
+Flying Sword
+Spirit Weapon
+Spirit Weapons
+Magic Treasure
+Magic Treasures
+Spirit Treasure
+Spirit Treasures
+Natal Weapon
+Lifebound Weapon
+Immortal Artifact
+Immortal Artifacts

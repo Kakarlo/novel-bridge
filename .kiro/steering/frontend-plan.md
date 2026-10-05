@@ -70,7 +70,18 @@ bring-your-own LLM API-token flow, and accounts/cloud only if adoption warrants 
    keeps the stream alive (TranslateTab stays mounted). Server-side stream resume is out of
    scope (live HTTP connection; no job registry — documented).
 
-## Next major frontend work — English-first glossary with in-context approval (spec task 14)
+## English-first glossary with in-context approval (spec task 14) — Phase 14.5 DONE
+
+Glossary tab rebuilt English-first: add/edit a name by its English `surface_form` (required) with
+a **category** select (character|title|term), a **gender** select (enabled only for characters),
+an optional source term, and a note. Rows show a **status badge** (candidate|approved|rejected)
+and a **category/gender badge**, with hover **approve/reject** controls (`api.setGlossaryStatus`)
+and a **status filter** (all/candidate/approved/rejected with counts). Classic paired entries
+still work (source term + English name → approved). Note: a manually added English-only name
+starts as `candidate` (same rule as promoted terms) — approve it to make it steer the model.
+Remaining: Phase 14.6 in-context review UI (translate tab) + the opt-in review toggle.
+
+### Earlier plan (kept for reference)
 
 This is **table stakes** (the competitors already have it) — build it clean and credible, keep
 the review UI **lightweight**, and don't pour effort into an inline-edit review studio.

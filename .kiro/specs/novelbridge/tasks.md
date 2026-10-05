@@ -219,8 +219,11 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
           budget mirrors the same filter. Matching stays stdlib (no engine call); the source-term
           confirmation engine task is deferred. 77 backend tests pass (6 prompt tests cover
           filtering + blocks).
-    - 14.5 Glossary UI: English-only add with category + gender, status badges, approve/reject,
-      status filter; keep the classic paired editor. Opt-in review toggle.
+    - [x] 14.5 Glossary UI: English-first add/edit (surface_form required + category select +
+          gender select shown for characters + optional source term + note); per-row status badge +
+          category/gender badge; hover approve/reject (`setGlossaryStatus`); status filter with
+          counts; classic paired entries still supported. Opt-in review toggle moves to 14.6 with
+          the translate-tab review panel. Frontend builds clean.
     - 14.6 In-context review UI (**lightweight, opt-in**): translate-tab review panel +
       basic output highlighting; history retro-review via the matches endpoint. Not a full
       inline-edit review studio.

@@ -145,11 +145,17 @@ export function ReferencesTab({
                       <span>{ref.content.length.toLocaleString()} chars</span>
                       <span>·</span>
                       <span>{formatDate(ref.created_at)}</span>
-                      {ref.summary ? (
+                      {ref.detected_names.length > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[10px]">
+                          {ref.detected_names.length} name{ref.detected_names.length === 1 ? "" : "s"}
+                        </Badge>
+                      )}
+                      {ref.candidate_terms.length > 0 && (
                         <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[10px]">
                           {ref.candidate_terms.length} term{ref.candidate_terms.length === 1 ? "" : "s"}
                         </Badge>
-                      ) : (
+                      )}
+                      {!ref.summary && (
                         <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">
                           not summarized
                         </Badge>
@@ -556,7 +562,7 @@ function DerivedContext({
           <div className="text-xs font-medium text-foreground">
             Detected names
             <span className="ml-1.5 font-normal text-muted-foreground">
-              — found by rules (capitalized proper nouns); click to add to the glossary
+              — automatically detected proper nouns (spaCy); click to add to the glossary
             </span>
           </div>
           <ul className="flex flex-wrap gap-1.5">{detected.map(chip)}</ul>

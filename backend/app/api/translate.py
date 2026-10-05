@@ -17,6 +17,10 @@ from app.services import context_builder as cb
 from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api", tags=["translate"])
 
 # One semaphore per configured cap. Keyed by the limit so tests that spin up an
@@ -54,6 +58,26 @@ def translate(
     references = store.list_references(pid)
     built = cb.build(
         glossary, references, body.raw_text, settings.nb_context_budget_tokens
+    )
+
+    # Debug: estimated prompt occupancy, so the context window (OLLAMA_NUM_CTX) can be sized
+    # from real data rather than guessed. estimate_tokens is the same char/3 heuristic the
+    # budgeter uses, so these numbers are consistent with the budgeting decisions. The
+    # engine's reply is NOT counted here (it hasn't happened yet) — that's the headroom
+    # between assembled tokens and NUM_CTX. Enable with: logging at INFO for app.api.translate.
+    raw_tok = cb.estimate_tokens(body.raw_text)
+    ref_tok = cb.estimate_tokens(built.reference_context)
+    assembled = raw_tok + ref_tok
+    logger.info(
+        "translate context: raw=%d ref=%d assembled~%d tokens (budget=%d, NUM_CTX=%d, "
+        "raw_chars=%d, truncated=%s)",
+        raw_tok,
+        ref_tok,
+        assembled,
+        settings.nb_context_budget_tokens,
+        settings.ollama_num_ctx,
+        len(body.raw_text),
+        built.truncated,
     )
 
     req = TranslationRequest(

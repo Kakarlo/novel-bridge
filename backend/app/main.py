@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,6 +16,12 @@ from app.engines.factory import get_engine
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+
+    # Surface our own INFO logs (e.g. the translate context-occupancy line) under uvicorn,
+    # which otherwise leaves app loggers at the root default of WARNING. Scoped to the "app"
+    # namespace so we don't flip logging on for third-party libraries. Propagates to
+    # uvicorn's root handler, so no handler is attached here.
+    logging.getLogger("app").setLevel(logging.INFO)
 
     # Fail fast if the selected engine is misconfigured (Requirement 5.6).
     get_engine(settings)

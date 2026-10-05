@@ -59,6 +59,11 @@ class StorageService(ABC):
     ) -> ReferenceChapter | None: ...
 
     @abstractmethod
+    def set_reference_detected_names(
+        self, ref_id: str, detected_names: list[str]
+    ) -> ReferenceChapter | None: ...
+
+    @abstractmethod
     def delete_reference(self, ref_id: str) -> bool: ...
 
     # --- glossary (English-first, task 14) ---

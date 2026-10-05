@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BookA, Check, Pencil, Plus, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
+import { BookA, Check, Pencil, Plus, ThumbsDown, ThumbsUp, Trash2, Undo2, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { Gender, GlossaryCategory, GlossaryEntry, GlossaryStatus } from "@/api/types";
@@ -21,7 +21,19 @@ const CATEGORY_LABELS: Record<GlossaryCategory, string> = {
   term: "Term",
 };
 
-export function GlossaryTab({ projectId }: { projectId: string }) {
+export function GlossaryTab({
+  projectId,
+  active = true,
+  onGlossaryChanged,
+}: {
+  projectId: string;
+  // Whether this tab is currently the active/visible one. We refetch when it BECOMES active
+  // (so cross-tab changes — e.g. a term promoted from References — show up), but never
+  // mid-edit, so toggling one term's status doesn't reload the whole list.
+  active?: boolean;
+  // Notify the workspace that the glossary changed so the header counts refresh.
+  onGlossaryChanged?: () => void;
+}) {
   const [entries, setEntries] = useState<GlossaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -29,21 +41,35 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
   const [pendingDelete, setPendingDelete] = useState<GlossaryEntry | null>(null);
   const [filter, setFilter] = useState<StatusFilter>("all");
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(() => {
+    let alive = true;
     setLoading(true);
+    api
+      .listGlossary(projectId)
+      .then((data) => alive && setEntries(sortEntries(data)))
+      .catch((e) => alive && toast.error(e instanceof Error ? e.message : "Load failed"))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+
+  // Load on project switch, and reset transient view state.
+  useEffect(() => {
     setAdding(false);
     setEditingId(null);
     setFilter("all");
-    api
-      .listGlossary(projectId)
-      .then((data) => active && setEntries(sortEntries(data)))
-      .catch((e) => active && toast.error(e instanceof Error ? e.message : "Load failed"))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [projectId]);
+    return load();
+  }, [projectId, load]);
+
+  // Refetch when the tab transitions hidden -> active, so changes made in other tabs while
+  // we were hidden (e.g. a promoted/rejected reference term) are picked up. The edge guard
+  // (wasActive ref) means staying active across our own edits does NOT trigger a reload.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) load();
+    wasActive.current = active;
+  }, [active, load]);
 
   function upsertLocal(entry: GlossaryEntry) {
     setEntries((prev) => {
@@ -62,6 +88,7 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
       note: draft.note || null,
     });
     upsertLocal(entry);
+    onGlossaryChanged?.();
     toast.success("Term added");
     setAdding(false);
   }
@@ -74,6 +101,7 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
       note: draft.note || null,
     });
     upsertLocal(entry);
+    onGlossaryChanged?.();
     toast.success("Entry updated");
     setEditingId(null);
   }
@@ -82,6 +110,8 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
     try {
       const updated = await api.setGlossaryStatus(entry.id, status);
       upsertLocal(updated);
+      // Approving/rejecting/restoring changes the live-term count -> refresh counts + siblings.
+      onGlossaryChanged?.();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not update status");
     }
@@ -90,7 +120,8 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
   async function handleDelete(entry: GlossaryEntry) {
     await api.deleteGlossary(entry.id);
     setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    toast.success("Entry removed");
+    onGlossaryChanged?.();
+    toast.success("Entry deleted");
   }
 
   const counts = useMemo(() => {
@@ -201,27 +232,42 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
 
                       {/* Row actions — always visible and comfortably sized for desktop. */}
                       <div className="flex shrink-0 items-center gap-1">
-                        {entry.status !== "approved" && (
+                        {/* Rejected = soft-deleted. Offer Restore (back to candidate) instead
+                            of the approve/reject pair, so the soft-delete is reversible and
+                            clearly distinct from the hard Delete below. */}
+                        {entry.status === "rejected" ? (
                           <Button
                             size="icon-sm"
                             variant="outline"
-                            aria-label={`Approve ${entry.surface_form}`}
-                            title="Approve"
-                            onClick={() => handleStatus(entry, "approved")}
+                            aria-label={`Restore ${entry.surface_form}`}
+                            title="Restore (back to candidate)"
+                            onClick={() => handleStatus(entry, "candidate")}
                           >
-                            <ThumbsUp className="text-emerald-600 dark:text-emerald-400" />
+                            <Undo2 className="text-muted-foreground" />
                           </Button>
-                        )}
-                        {entry.status !== "rejected" && (
-                          <Button
-                            size="icon-sm"
-                            variant="outline"
-                            aria-label={`Reject ${entry.surface_form}`}
-                            title="Reject"
-                            onClick={() => handleStatus(entry, "rejected")}
-                          >
-                            <ThumbsDown className="text-muted-foreground" />
-                          </Button>
+                        ) : (
+                          <>
+                            {entry.status !== "approved" && (
+                              <Button
+                                size="icon-sm"
+                                variant="outline"
+                                aria-label={`Approve ${entry.surface_form}`}
+                                title="Approve"
+                                onClick={() => handleStatus(entry, "approved")}
+                              >
+                                <ThumbsUp className="text-emerald-600 dark:text-emerald-400" />
+                              </Button>
+                            )}
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              aria-label={`Reject ${entry.surface_form}`}
+                              title="Reject (soft-delete; kept for restore)"
+                              onClick={() => handleStatus(entry, "rejected")}
+                            >
+                              <ThumbsDown className="text-muted-foreground" />
+                            </Button>
+                          </>
                         )}
                         <Button
                           size="icon-sm"
@@ -239,8 +285,14 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
                           size="icon-sm"
                           variant="ghost"
                           aria-label={`Delete ${entry.surface_form}`}
-                          title="Delete"
-                          onClick={() => setPendingDelete(entry)}
+                          title={entry.status === "approved" ? "Delete" : "Delete (no confirmation)"}
+                          onClick={() => {
+                            // Low-stakes rows (candidate/rejected) delete immediately — no
+                            // dialog. Only an approved term (one actively steering the model)
+                            // asks for confirmation.
+                            if (entry.status === "approved") setPendingDelete(entry);
+                            else void handleDelete(entry);
+                          }}
                         >
                           <Trash2 className="text-muted-foreground" />
                         </Button>
@@ -257,11 +309,11 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
-        title="Delete this term?"
+        title="Delete this term permanently?"
         description={
           <>
-            <span className="font-medium text-foreground">{pendingDelete?.surface_form}</span> will be removed from the
-            glossary.
+            <span className="font-medium text-foreground">{pendingDelete?.surface_form}</span> will be permanently
+            deleted. To hide a term but keep it for later, use <span className="text-foreground">Reject</span> instead.
           </>
         }
         confirmLabel="Delete"

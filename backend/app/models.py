@@ -124,6 +124,11 @@ class ProjectCreate(BaseModel):
 class ReferenceCreate(BaseModel):
     title: str
     content: str
+    # When False, skip the AI summary/candidate-term extraction and run ONLY the offline
+    # name detector (spaCy NER). Lets the user test the extractor in isolation and add a
+    # reference instantly without waiting on a slow local model. detected_names is always
+    # computed either way. Defaults True so existing behavior is unchanged.
+    extract_summary: bool = True
 
     @field_validator("title", "content")
     @classmethod

@@ -45,7 +45,11 @@ def get_project(pid: str, store: StorageService = Depends(get_storage)):
         "project": proj,
         "counts": {
             "references": len(store.list_references(pid)),
-            "glossary": len(store.list_glossary(pid)),
+            # Exclude rejected terms: a rejected term is a soft-delete (kept for restore,
+            # out of the prompt), so the headline count reflects only live terms.
+            "glossary": sum(
+                1 for e in store.list_glossary(pid) if e.status != "rejected"
+            ),
             "translations": len(store.list_translations(pid)),
         },
     }
@@ -80,15 +84,19 @@ async def add_reference(
     detected_names = extract_proper_nouns(body.content)
     summary: str | None = None
     candidate_terms: list[str] = []
-    project = store.get_project(pid)
-    lang = (project.source_lang if project else None) or "zh"
-    try:
-        extraction = await engine.extract_reference(body.content, lang, detected_names)
-        summary = extraction.summary or None
-        candidate_terms = extraction.candidate_terms
-    except Exception:  # noqa: BLE001 - degrade gracefully, keep the reference
-        summary = None
-        candidate_terms = []
+    # Names-only mode (body.extract_summary == False): skip the slow AI extraction entirely
+    # and store just the detected names. Otherwise run the engine extraction, degrading
+    # gracefully (keep the reference with names only) if the engine is unreachable.
+    if body.extract_summary:
+        project = store.get_project(pid)
+        lang = (project.source_lang if project else None) or "zh"
+        try:
+            extraction = await engine.extract_reference(body.content, lang, detected_names)
+            summary = extraction.summary or None
+            candidate_terms = extraction.candidate_terms
+        except Exception:  # noqa: BLE001 - degrade gracefully, keep the reference
+            summary = None
+            candidate_terms = []
     return store.add_reference(
         pid, body.title, body.content, summary, candidate_terms, detected_names
     )
@@ -113,6 +121,25 @@ async def resummarize_reference(
     updated = store.set_reference_summary(
         ref_id, extraction.summary, extraction.candidate_terms, detected_names
     )
+    if not updated:
+        raise HTTPException(404, "Reference not found")
+    return updated
+
+
+@router.post("/references/{ref_id}/redetect", response_model=ReferenceChapter)
+def redetect_reference_names(
+    ref_id: str, store: StorageService = Depends(get_storage)
+):
+    """Re-run ONLY the offline name detector for one reference (no AI, no engine call).
+
+    A fast way to refresh ``detected_names`` after the detector improves, or to spot names
+    missed on the first pass, without re-running the slow summary extraction.
+    """
+    ref = store.get_reference(ref_id)
+    if not ref:
+        raise HTTPException(404, "Reference not found")
+    detected_names = extract_proper_nouns(ref.content)
+    updated = store.set_reference_detected_names(ref_id, detected_names)
     if not updated:
         raise HTTPException(404, "Reference not found")
     return updated

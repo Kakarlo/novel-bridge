@@ -184,6 +184,26 @@ class SQLiteStorage(StorageService):
             ).fetchone()
         return self._row_to_reference(row) if row else None
 
+    def set_reference_detected_names(
+        self, ref_id: str, detected_names: list[str]
+    ) -> ReferenceChapter | None:
+        """Update ONLY the rule-based detected_names, leaving summary/candidate_terms as-is.
+
+        Backs the "Redetect names" action: re-run the offline name detector without
+        touching the (possibly expensive) AI-derived summary.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE reference_chapters SET detected_names=? WHERE id=?",
+                (json.dumps(detected_names, ensure_ascii=False), ref_id),
+            )
+            if cur.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM reference_chapters WHERE id=?", (ref_id,)
+            ).fetchone()
+        return self._row_to_reference(row) if row else None
+
     def delete_reference(self, ref_id: str) -> bool:
         with self._connect() as conn:
             cur = conn.execute(

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { FileText, Plus, RefreshCw, ScanSearch, Sparkles, Trash2, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { ReferenceChapter } from "@/api/types";
@@ -15,7 +15,15 @@ import { EmptyState } from "@/components/empty-state";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export function ReferencesTab({ projectId }: { projectId: string }) {
+export function ReferencesTab({
+  projectId,
+  onGlossaryChanged,
+}: {
+  projectId: string;
+  // Notify the workspace after a glossary/reference mutation so the header counts refresh.
+  // The glossary tab itself refetches when it next becomes active (not forced here).
+  onGlossaryChanged?: () => void;
+}) {
   const [items, setItems] = useState<ReferenceChapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -47,6 +55,7 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
     await api.deleteReference(ref.id);
     setItems((prev) => prev.filter((r) => r.id !== ref.id));
     if (selectedId === ref.id) setSelectedId(null);
+    onGlossaryChanged?.(); // refresh the references count badge
     toast.success("Reference removed");
   }
 
@@ -69,6 +78,7 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
           setItems((prev) => [ref, ...prev]);
           setComposing(false);
           setSelectedId(ref.id);
+          onGlossaryChanged?.(); // refresh the references count badge
         }}
       />
     );
@@ -79,6 +89,7 @@ export function ReferencesTab({ projectId }: { projectId: string }) {
       <ReferenceReader
         projectId={projectId}
         reference={selected}
+        onGlossaryChanged={onGlossaryChanged}
         onBack={() => setSelectedId(null)}
         onDelete={() => setPendingDelete(selected)}
         onUpdated={(ref) => setItems((prev) => prev.map((r) => (r.id === ref.id ? ref : r)))}
@@ -192,6 +203,9 @@ function ReferenceComposer({
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState(false);
+  // Names-only mode: skip the (slow, local-LLM) AI summary and run only the offline name
+  // detector. Lets the user test the extractor without waiting on the model.
+  const [namesOnly, setNamesOnly] = useState(false);
 
   const titleEmpty = !title.trim();
   const contentEmpty = !content.trim();
@@ -206,8 +220,9 @@ function ReferenceComposer({
       const ref = await api.addReference(projectId, {
         title: title.trim(),
         content: content.trim(),
+        extract_summary: !namesOnly,
       });
-      toast.success("Reference added");
+      toast.success(namesOnly ? "Reference added (names only)" : "Reference added");
       onAdded(ref);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not add reference");
@@ -259,13 +274,24 @@ function ReferenceComposer({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 border-t px-6 py-4">
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          Save reference
-        </Button>
+      <div className="flex items-center justify-between gap-4 border-t px-6 py-4">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground select-none">
+          <input
+            type="checkbox"
+            checked={namesOnly}
+            onChange={(e) => setNamesOnly(e.target.checked)}
+            className="size-4 rounded border-input accent-[var(--accent-brand)]"
+          />
+          Names only — skip the AI summary (faster; just runs the name detector)
+        </label>
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Saving…" : "Save reference"}
+          </Button>
+        </div>
       </div>
     </form>
   );
@@ -274,6 +300,7 @@ function ReferenceComposer({
 function ReferenceReader({
   projectId,
   reference,
+  onGlossaryChanged,
   onBack,
   onDelete,
   onUpdated,
@@ -283,6 +310,7 @@ function ReferenceReader({
 }: {
   projectId: string;
   reference: ReferenceChapter;
+  onGlossaryChanged?: () => void;
   onBack: () => void;
   onDelete: () => void;
   onUpdated: (ref: ReferenceChapter) => void;
@@ -291,6 +319,7 @@ function ReferenceReader({
   onConfirmDelete: (r: ReferenceChapter) => Promise<void>;
 }) {
   const [resummarizing, setResummarizing] = useState(false);
+  const [redetecting, setRedetecting] = useState(false);
 
   async function resummarize() {
     try {
@@ -305,6 +334,20 @@ function ReferenceReader({
     }
   }
 
+  async function redetect() {
+    try {
+      setRedetecting(true);
+      const updated = await api.redetectReferenceNames(reference.id);
+      onUpdated(updated);
+      const n = updated.detected_names.length;
+      toast.success(`Redetected names (${n} found)`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Redetect failed");
+    } finally {
+      setRedetecting(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-4 border-b px-6 py-4">
@@ -315,6 +358,10 @@ function ReferenceReader({
           <h2 className="truncate font-heading text-xl font-semibold tracking-tight">{reference.title}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={redetect} disabled={redetecting} data-icon="inline-start">
+            <ScanSearch className={cn(redetecting && "animate-pulse")} />
+            {redetecting ? "Redetecting…" : "Redetect names"}
+          </Button>
           <Button variant="outline" size="sm" onClick={resummarize} disabled={resummarizing} data-icon="inline-start">
             <RefreshCw className={cn(resummarizing && "animate-spin")} />
             {resummarizing ? "Re-summarizing…" : "Re-summarize"}
@@ -328,7 +375,7 @@ function ReferenceReader({
       <ScrollArea className="min-h-0 flex-1">
         {/* Wide reading column for desktop (~75-80% of available width). */}
         <div className="mx-auto w-[78%] min-w-0 max-w-5xl px-6 py-8">
-          <DerivedContext projectId={projectId} reference={reference} />
+          <DerivedContext projectId={projectId} reference={reference} onGlossaryChanged={onGlossaryChanged} />
           <article className="mt-6 border-t pt-6 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
             {reference.content}
           </article>
@@ -359,46 +406,29 @@ function ReferenceReader({
  * The engine-derived context for a reference: a style/plot summary plus two separate
  * groups of promotable English names — rule-based "Detected names" (field-fix #2) and the
  * AI's "Candidate terms". References are English, so each term IS an English surface form;
- * promoting adds it to the glossary as a `candidate` in one click (English-first; Phase 5
- * adds category/gender on promotion).
+ * promoting adds it to the glossary as a `candidate` in one click (English-first).
  *
- * Already-promoted terms are hidden (field-fix #4): on load we fetch the project glossary
- * and drop any term whose surface form already exists (case-insensitive), so the chips
- * reflect reality after a refresh and don't pile up as more references are added.
+ * Option B (unified vocabulary): a suggestion chip has two actions, both of which write to
+ * the glossary (one concept, persisted — no more localStorage "dismiss"):
+ *   • "+"  = promote → create a glossary entry as `candidate` (approve later).
+ *   • "✕"  = reject  → create a glossary entry as `rejected` (soft-delete; remembered so
+ *            the suggestion won't resurface, and restorable from the Glossary tab).
+ * Both hide the chip, because any surface form already present in the glossary (regardless
+ * of status) is filtered out. We fetch the glossary on load (and on the shared
+ * glossaryVersion signal) to know which chips to hide.
  */
-// Dismissed candidate terms per reference (field feedback): a term the user doesn't want
-// cluttering the suggestions but doesn't want in the glossary either. Persisted to
-// localStorage so dismissals survive a refresh (per-browser; cheap, no backend/schema change).
-const dismissKey = (refId: string) => `nb:dismissed-terms:${refId}`;
-
-function loadDismissed(refId: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(dismissKey(refId));
-    const arr = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(arr) ? arr.map((t) => String(t).toLowerCase()) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveDismissed(refId: string, set: Set<string>) {
-  try {
-    localStorage.setItem(dismissKey(refId), JSON.stringify([...set]));
-  } catch {
-    /* ignore */
-  }
-}
-
-function DerivedContext({ projectId, reference }: { projectId: string; reference: ReferenceChapter }) {
-  // Surface forms already in the glossary (case-insensitive), fetched on load so chip
-  // state survives a refresh instead of living only in session state.
+function DerivedContext({
+  projectId,
+  reference,
+  onGlossaryChanged,
+}: {
+  projectId: string;
+  reference: ReferenceChapter;
+  onGlossaryChanged?: () => void;
+}) {
+  // Surface forms already in the glossary (case-insensitive), any status. A term that's
+  // been promoted OR rejected lives here, so either action hides the chip persistently.
   const [inGlossary, setInGlossary] = useState<Set<string>>(new Set());
-  // Locally dismissed terms (lowercased), restored from localStorage.
-  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed(reference.id));
-
-  useEffect(() => {
-    setDismissed(loadDismissed(reference.id));
-  }, [reference.id]);
 
   useEffect(() => {
     let active = true;
@@ -413,13 +443,15 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     return () => {
       active = false;
     };
+    // Re-fetch when switching to a different reference. Our own promote/reject updates the
+    // inGlossary set locally, so chips hide immediately without a refetch.
   }, [projectId, reference.id]);
 
-  const hidden = (t: string) => inGlossary.has(t.toLowerCase()) || dismissed.has(t.toLowerCase());
+  const hidden = (t: string) => inGlossary.has(t.toLowerCase());
 
   const hasSummary = !!reference.summary?.trim();
-  // Hide terms already in the glossary or dismissed. Detected (rule-based) names come first;
-  // drop any that also appear in the AI candidate list to avoid showing the same name twice.
+  // Hide terms already in the glossary (promoted or rejected). Detected (rule-based) names
+  // come first; drop any that also appear in the AI candidate list to avoid showing twice.
   const detected = (reference.detected_names ?? []).filter((t) => !hidden(t));
   const detectedLower = new Set(detected.map((t) => t.toLowerCase()));
   const candidates = (reference.candidate_terms ?? []).filter((t) => !hidden(t) && !detectedLower.has(t.toLowerCase()));
@@ -441,24 +473,33 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     try {
       // English-first: the term IS the English name. Add as a candidate to approve later.
       await api.createGlossary(projectId, { surface_form: en, status: "candidate" });
-      // Remove it from the chips immediately by marking it in-glossary.
+      // Hide the chip immediately; tell the workspace so the glossary tab + counts update.
       setInGlossary((prev) => new Set(prev).add(en.toLowerCase()));
+      onGlossaryChanged?.();
       toast.success(`Added “${en}” to the glossary`);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not add to glossary");
     }
   }
 
-  function dismiss(term: string) {
-    setDismissed((prev) => {
-      const next = new Set(prev).add(term.toLowerCase());
-      saveDismissed(reference.id, next);
-      return next;
-    });
+  async function reject(term: string) {
+    const en = term.trim();
+    if (!en) return;
+    try {
+      // Option B: rejecting a suggestion is a persistent soft-delete — a glossary entry
+      // with status 'rejected'. It's remembered (won't resurface), stays out of the
+      // prompt and the term count, and can be restored from the Glossary tab.
+      await api.createGlossary(projectId, { surface_form: en, status: "rejected" });
+      setInGlossary((prev) => new Set(prev).add(en.toLowerCase()));
+      onGlossaryChanged?.();
+      toast.success(`Rejected “${en}” (restore it from the Glossary tab)`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not reject term");
+    }
   }
 
-  // Each chip: click the name to add it to the glossary; click the ✕ to dismiss it from
-  // the suggestions (persisted locally) without touching the glossary.
+  // Each chip: click the name to add it to the glossary; click the ✕ to reject it (a
+  // persistent soft-delete, restorable from the Glossary tab).
   const chip = (term: string) => (
     <li key={term}>
       <span className="inline-flex h-7 items-center overflow-hidden rounded-md border bg-background">
@@ -473,9 +514,9 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
         </button>
         <button
           type="button"
-          onClick={() => dismiss(term)}
-          aria-label={`Dismiss ${term}`}
-          title="Dismiss (remove from suggestions)"
+          onClick={() => reject(term)}
+          aria-label={`Reject ${term}`}
+          title="Reject (soft-delete; restore from the Glossary tab)"
           className="inline-flex h-full items-center border-l px-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <X className="size-3" />

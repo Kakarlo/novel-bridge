@@ -74,6 +74,9 @@ export interface ProjectCreate {
 export interface ReferenceCreate {
   title: string;
   content: string;
+  // When false, skip the slow AI summary/candidate-term extraction and run only the
+  // offline name detector. Defaults true on the backend.
+  extract_summary?: boolean;
 }
 
 export interface GlossaryCreate {

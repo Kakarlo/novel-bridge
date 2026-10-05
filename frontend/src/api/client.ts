@@ -84,6 +84,9 @@ export const api = {
   // engine was offline at upload). Returns the updated reference.
   resummarizeReference: (refId: string) =>
     request<ReferenceChapter>(`/references/${refId}/resummarize`, { method: "POST" }),
+  // Re-run ONLY the offline name detector (no AI) to refresh detected_names quickly.
+  redetectReferenceNames: (refId: string) =>
+    request<ReferenceChapter>(`/references/${refId}/redetect`, { method: "POST" }),
 
   // --- glossary ---
   listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),

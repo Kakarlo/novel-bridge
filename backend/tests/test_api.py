@@ -289,3 +289,89 @@ def test_delete_translation(client):
     assert client.get(f"/api/translations/{tid}").status_code == 404
     # Deleting again (missing) returns 404.
     assert client.delete(f"/api/translations/{tid}").status_code == 404
+
+
+def test_add_reference_names_only_skips_summary(client):
+    """extract_summary=False runs the name detector but skips the AI extraction."""
+    pid = _create_project(client)
+    r = client.post(
+        f"/api/projects/{pid}/references",
+        json={
+            "title": "Ch1",
+            "content": (
+                "Li Changshou bowed. Later, Li Changshou traveled to Beijing. "
+                "In Beijing, Li Changshou rested."
+            ),
+            "extract_summary": False,
+        },
+    )
+    assert r.status_code == 201
+    ref = r.json()
+    # No AI summary / candidate terms (the mock engine was never called)...
+    assert ref["summary"] is None
+    assert ref["candidate_terms"] == []
+    # ...but the offline name detector still ran.
+    assert "Beijing" in ref["detected_names"]
+
+
+def test_glossary_count_excludes_rejected(client):
+    """The project 'glossary' count excludes rejected (soft-deleted) terms."""
+    pid = _create_project(client)
+    keep = client.post(
+        f"/api/projects/{pid}/glossary", json={"surface_form": "Keeper"}
+    ).json()
+    drop = client.post(
+        f"/api/projects/{pid}/glossary", json={"surface_form": "Dropped"}
+    ).json()
+    assert client.get(f"/api/projects/{pid}").json()["counts"]["glossary"] == 2
+    # Reject one -> count drops, but the row is still stored (restorable).
+    client.patch(f"/api/glossary/{drop['id']}/status", json={"status": "rejected"})
+    assert client.get(f"/api/projects/{pid}").json()["counts"]["glossary"] == 1
+    assert len(client.get(f"/api/projects/{pid}/glossary").json()) == 2
+    # Restore it (status back to candidate) -> count rises again.
+    client.patch(f"/api/glossary/{drop['id']}/status", json={"status": "candidate"})
+    assert client.get(f"/api/projects/{pid}").json()["counts"]["glossary"] == 2
+    assert keep["surface_form"] == "Keeper"
+
+
+def test_reject_term_via_upsert_persists(client):
+    """Option B: rejecting a suggestion creates a persistent rejected glossary entry,
+    and a later promote (candidate) restores it (upsert on surface_form)."""
+    pid = _create_project(client)
+    # Reject a suggestion = upsert with status rejected.
+    r = client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "Noise Term", "status": "rejected"},
+    )
+    assert r.status_code == 201 and r.json()["status"] == "rejected"
+    # It's remembered in storage, excluded from the count.
+    assert client.get(f"/api/projects/{pid}").json()["counts"]["glossary"] == 0
+    entries = client.get(f"/api/projects/{pid}/glossary").json()
+    assert len(entries) == 1 and entries[0]["status"] == "rejected"
+    # Promoting the same surface form later flips it back (upsert merge, explicit status).
+    r2 = client.post(
+        f"/api/projects/{pid}/glossary",
+        json={"surface_form": "noise term", "status": "candidate"},
+    )
+    assert r2.status_code == 201 and r2.json()["status"] == "candidate"
+    assert len(client.get(f"/api/projects/{pid}/glossary").json()) == 1
+
+
+def test_redetect_reference_names_only(client):
+    """POST /references/{id}/redetect refreshes detected_names without touching summary."""
+    pid = _create_project(client)
+    # Add with the AI summary so summary/candidate_terms are populated.
+    ref = client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Lin Feng met Lin Feng's rival in Beijing."},
+    ).json()
+    summary_before = ref["summary"]
+    assert summary_before  # mock engine populated it
+    r = client.post(f"/api/references/{ref['id']}/redetect")
+    assert r.status_code == 200
+    body = r.json()
+    # Summary is untouched; detected_names recomputed by the offline detector.
+    assert body["summary"] == summary_before
+    assert isinstance(body["detected_names"], list)
+    # Unknown reference -> 404.
+    assert client.post("/api/references/nope/redetect").status_code == 404

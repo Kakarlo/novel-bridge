@@ -51,6 +51,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     return data;
   }, [projectId]);
 
+  // Called by any tab after a glossary/reference mutation: refresh the header counts only.
+  // Sibling tabs don't force-refetch mid-edit (bad UX); the glossary tab refetches when it
+  // next becomes active (see its `active` prop), which is when cross-tab changes matter.
+  const onGlossaryChanged = useCallback(() => {
+    void loadDetail();
+  }, [loadDetail]);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -112,10 +119,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         */}
         <div className="mt-3 min-h-0 flex-1 border-t">
           <TabsContent value="references" forceMount className={cn("h-full", tab !== "references" && "hidden")}>
-            <ReferencesTab key={`ref-${projectId}`} projectId={projectId} />
+            <ReferencesTab key={`ref-${projectId}`} projectId={projectId} onGlossaryChanged={onGlossaryChanged} />
           </TabsContent>
           <TabsContent value="glossary" forceMount className={cn("h-full", tab !== "glossary" && "hidden")}>
-            <GlossaryTab key={`glo-${projectId}`} projectId={projectId} />
+            <GlossaryTab
+              key={`glo-${projectId}`}
+              projectId={projectId}
+              active={tab === "glossary"}
+              onGlossaryChanged={onGlossaryChanged}
+            />
           </TabsContent>
           <TabsContent value="translate" forceMount className={cn("h-full", tab !== "translate" && "hidden")}>
             <TranslateTab

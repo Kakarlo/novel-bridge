@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HistoryPanel } from "@/components/history-panel";
+import { TranslationReview } from "@/components/translation-review";
 import { langLabel } from "@/lib/format";
 
 type Status = "idle" | "streaming" | "done" | "error" | "viewing";
@@ -384,6 +385,11 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           {/* Output pane */}
           <section className="relative flex min-h-0 flex-col bg-muted/20">
             <PaneHeader label="English" meta={outputMeta(status, output)} />
+            {/* Experimental review surface — only for a persisted translation (has an id and
+                not mid-stream). 404/empty from the gated endpoints renders nothing. */}
+            {viewingId && (status === "viewing" || status === "done") && (
+              <TranslationReview projectId={projectId} translationId={viewingId} onGlossaryChanged={onSaved} />
+            )}
             {streaming && !atBottom && (
               <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center">
                 <Button

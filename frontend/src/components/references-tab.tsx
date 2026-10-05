@@ -460,20 +460,6 @@ function DerivedContext({
     // inGlossary set locally, so chips hide immediately without a refetch.
   }, [projectId, reference.id]);
 
-  // EXPERIMENTAL source-language terms (zh/ja). The endpoint 404s when the feature is off,
-  // so we just leave the list empty and render nothing — zero footprint when disabled.
-  const [sourceTerms, setSourceTerms] = useState<string[]>([]);
-  useEffect(() => {
-    let active = true;
-    api
-      .referenceSourceTerms(reference.id)
-      .then((terms) => active && setSourceTerms(terms))
-      .catch(() => active && setSourceTerms([])); // 404 = feature disabled; ignore
-    return () => {
-      active = false;
-    };
-  }, [reference.id]);
-
   const hidden = (t: string) => inGlossary.has(t.toLowerCase());
 
   const hasSummary = !!reference.summary?.trim();
@@ -483,7 +469,7 @@ function DerivedContext({
   const detectedLower = new Set(detected.map((t) => t.toLowerCase()));
   const candidates = (reference.candidate_terms ?? []).filter((t) => !hidden(t) && !detectedLower.has(t.toLowerCase()));
 
-  const nothingToShow = !hasSummary && detected.length === 0 && candidates.length === 0 && sourceTerms.length === 0;
+  const nothingToShow = !hasSummary && detected.length === 0 && candidates.length === 0;
   if (nothingToShow) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
@@ -578,35 +564,6 @@ function DerivedContext({
             </span>
           </div>
           <ul className="flex flex-wrap gap-1.5">{candidates.map(chip)}</ul>
-        </div>
-      )}
-
-      {sourceTerms.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-foreground">
-            Source-language terms
-            <span className="ml-1.5 font-normal text-muted-foreground">
-              — experimental; detected in the source text. Click to copy, then pair with an English name in the Glossary
-              tab.
-            </span>
-          </div>
-          <ul className="flex flex-wrap gap-1.5">
-            {sourceTerms.map((term) => (
-              <li key={term}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard?.writeText(term);
-                    toast.success(`Copied “${term}”`);
-                  }}
-                  title="Copy source term"
-                  className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-sm font-normal transition-colors hover:bg-muted"
-                >
-                  {term}
-                </button>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
     </section>

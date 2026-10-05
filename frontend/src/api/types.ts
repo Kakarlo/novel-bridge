@@ -112,6 +112,19 @@ export interface TermMatch {
   snippets: string[];
 }
 
+// EXPERIMENTAL source↔English pairing proposal for a saved translation (FRONTEND_TODO #3,
+// gated by NB_SOURCE_TERMS on the backend). Deterministic — correlates appearance order +
+// frequency in the source chapter vs the English output, NOT string similarity. These are
+// guesses; present them as suggestions, not facts.
+export interface AlignmentCandidate {
+  source_term: string;
+  surface_form: string;
+  source_count: number;
+  english_count: number;
+  confidence: number; // 0..1
+  basis: string;
+}
+
 export interface TranslateRequest {
   raw_text: string;
   source_lang: SourceLang;

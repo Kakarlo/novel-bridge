@@ -3,6 +3,7 @@
 
 import { streamSse } from "./sse";
 import type {
+  AlignmentCandidate,
   GlossaryCreate,
   GlossaryEntry,
   GlossaryStatus,
@@ -94,11 +95,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ term }),
     }),
-  // EXPERIMENTAL (gated by NB_SOURCE_TERMS on the backend): deterministic zh/ja source-
-  // language proper nouns for a reference. 404 when the feature is off — callers treat a
-  // thrown 404 as "feature disabled" and simply don't render the group.
-  referenceSourceTerms: (refId: string) => request<string[]>(`/references/${refId}/source-terms`),
-
   // --- glossary ---
   listGlossary: (pid: string) => request<GlossaryEntry[]>(`/projects/${pid}/glossary`),
   createGlossary: (pid: string, body: GlossaryCreate) =>
@@ -126,6 +122,14 @@ export const api = {
   deleteTranslation: (tid: string) => request<void>(`/translations/${tid}`, { method: "DELETE" }),
   // Retrospective term matches for a saved translation (task 14).
   getTranslationMatches: (tid: string) => request<TermMatch[]>(`/translations/${tid}/matches`),
+  // EXPERIMENTAL (gated by NB_SOURCE_TERMS): zh/ja source-language proper nouns from a saved
+  // translation's SOURCE chapter, most frequent first (FRONTEND_TODO #1 — moved here from
+  // references, which are English). A thrown 404 = feature off → render nothing; `[]` =
+  // model unavailable → render nothing.
+  translationSourceTerms: (tid: string) => request<string[]>(`/translations/${tid}/source-terms`),
+  // EXPERIMENTAL (gated by NB_SOURCE_TERMS): proposed source↔English glossary pairings for a
+  // saved translation, highest confidence first (FRONTEND_TODO #3). Same 404/[] gating.
+  translationTermAlignment: (tid: string) => request<AlignmentCandidate[]>(`/translations/${tid}/term-alignment`),
 
   /**
    * Open the SSE translate stream. Returns an async iterator of parsed events;

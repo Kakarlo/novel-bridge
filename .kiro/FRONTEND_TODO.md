@@ -7,7 +7,7 @@ are called out explicitly.
 
 ---
 
-## 1. Source-language terms moved from references → saved translations (BREAKING)
+## 1. Source-language terms moved from references → saved translations (BREAKING) — DONE
 
 **Why:** references are English (English-first glossary), so running zh/ja source-term NER over
 a reference's text produced garbage (English words tagged by a Chinese model). Source text only
@@ -79,7 +79,7 @@ ordering key), not a frontend-only fix.
 
 ---
 
-## 3. Source↔English term-alignment proposals (NEW, experimental, additive)
+## 3. Source↔English term-alignment proposals (NEW, experimental, additive) — DONE
 
 **Why:** a glossary entry only becomes authoritative once it has BOTH the English
 `surface_form` AND the original `source_term`. Users know the English name but not the source
@@ -114,7 +114,7 @@ english_count: number, confidence: number (0..1), basis: string }`.
 
 ---
 
-## 4. Reference tab: term count + "Detected names" description are stale
+## 4. Reference tab: term count + "Detected names" description are stale — DONE
 
 Backend-adjacent copy/display fixes in `references-tab.tsx` (no backend change needed):
 
@@ -153,3 +153,27 @@ backend now exposes the list.
    `model?: string` added and passed into `TranslationRequest.model`. That's a small BACKEND
    change to do when the picker is built; flag it back to a backend session so the contract
    changes once. Until then the picker can only _display_ the current model, not switch it.
+
+### 5a. Build the picker PROVIDER-AWARE even though only one provider exists today
+
+The current `GET /api/models` contract (`{models, current}`) is correct for the single local
+engine shipped now, but the roadmap adds cloud providers (Gemini, OpenAI, Claude, OpenRouter)
+behind the same `TranslationEngine` interface. To avoid rebuilding the picker, design the UI
+for a **two-level provider → model** shape from day one, even while there's just "Local (Ollama)".
+
+- Model the picker's internal state as `provider -> model`, not a flat model name. Today there's
+  one provider; render it as a (possibly collapsed) group so adding providers later is additive.
+- Treat an empty `models` list as **ambiguous**: it can mean "engine unreachable" OR, for a
+  future cloud provider, "no API key configured". Don't hard-code "unreachable" copy — leave room
+  for a "needs setup / add a key" state per provider.
+- **Expect the contract to grow a provider dimension.** The planned target shape (see
+  `tech.md` → "Bring-your-own LLM API token") is roughly
+  `{ providers: [{ id, label, reachable, needs_key, models: string[] }], ... }` with a
+  per-provider/per-project "current". When that lands, `listModels()` and the picker swap to it;
+  keeping the picker provider-shaped now makes that a data change, not a rewrite.
+- The per-request override (5.3 above) will likewise become a per-request **`provider` + `model`**
+  pair, not just `model`. Keep the "selected engine/model" the translate call will send modeled
+  as a `{provider, model}` object even if provider is fixed today.
+
+Net: ship the single-provider picker now, but shaped so cloud providers are a later data/config
+change rather than a UI rebuild.

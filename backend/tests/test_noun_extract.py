@@ -70,9 +70,42 @@ def test_ner_possessive_stripped():
 
 @ner
 def test_ner_leading_article_trimmed():
-    names = extract_proper_nouns("The Azure Peak loomed. The Azure Peak glowed.")
-    assert "Azure Peak" in names
-    assert "The Azure Peak" not in names
+    # A leading article is stripped from a span. Use a PERSON name (reliably tagged); the
+    # label set is intentionally narrow (PERSON/ORG/GPE/LOC/FAC) so invented place names
+    # that NER guesses as WORK_OF_ART are not surfaced — that narrowing is what removes the
+    # junk ("Clang", pill phrases) seen on real chapters.
+    names = extract_proper_nouns(
+        "The Gautama arrived. The Gautama spoke to the council about the Gautama's plan."
+    )
+    assert any(n == "Gautama" for n in names)
+    assert not any(n.lower().startswith("the ") for n in names)
+
+
+@ner
+def test_ner_rejects_quote_and_punctuation_spans():
+    # Spans that straddle quotes/sentence boundaries must not surface as garbage names.
+    text = 'He shouted, "No... Ah!" Li Changshou ran. Li Changshou ran again to the gate.'
+    names = extract_proper_nouns(text)
+    assert all('"' not in n and "!" not in n and "…" not in n and "." not in n for n in names)
+    # The real recurring name still comes through.
+    assert any("Changshou" in n for n in names)
+
+
+@ner
+def test_ner_rejects_lone_interjections():
+    text = "Clang! Hmph. Yo, the man said. Hmm, he thought. Li Changshou watched quietly."
+    names = extract_proper_nouns(text)
+    for junk in ["Clang", "Hmph", "Yo", "Hmm"]:
+        assert junk not in names
+
+
+@ner
+def test_ner_rejects_trailing_lowercase_verb():
+    # NER sometimes glues a lowercase verb onto a name span ("Li Changshou frowned").
+    text = "Li Changshou frowned at the elder. Later Li Changshou frowned again."
+    names = extract_proper_nouns(text)
+    assert "Li Changshou frowned" not in names
+    assert all(all(tok[0].isupper() or tok.lower() in {"of", "the", "and"} for tok in n.split()) for n in names)
 
 
 @ner

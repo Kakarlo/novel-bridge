@@ -33,18 +33,31 @@ from collections import Counter
 
 logger = logging.getLogger(__name__)
 
-# Entity labels that denote a name we want to surface. Spans with these labels are the clean
-# multiword names NER is good at. We deliberately include ORG/FAC/LAW/WORK_OF_ART because
-# sects/peaks/techniques in translated novels land under those (e.g. "Azure Cloud Sect").
-_NAME_LABELS = {
-    "PERSON", "ORG", "GPE", "FAC", "LOC", "NORP", "EVENT", "WORK_OF_ART", "LAW",
-}
+# Entity labels that denote a name we want to surface. Kept DELIBERATELY NARROW: character,
+# place, org, and facility names cluster in these five. We tried the broader set
+# (NORP/WORK_OF_ART/LAW/EVENT) on a real xianxia chapter and it dragged in noise —
+# interjections ("Clang") as NORP, pill/skill phrases as WORK_OF_ART — so those are excluded.
+# ponytail: narrower labels = fewer false positives, which is the whole point of the pass.
+_NAME_LABELS = {"PERSON", "ORG", "GPE", "FAC", "LOC"}
 
-# Leading determiners/connectives to strip from a span ("The Azure Peak" -> "Azure Peak").
+# Leading/trailing determiners/connectives to strip from a span ("The Azure Peak" ->
+# "Azure Peak"). Lowercase connectives may still appear *inside* a name ("Court of Dao").
 _LEADING_DROP = {"the", "a", "an", "of", "and"}
+
+# Single-token interjections / onomatopoeia that NER capitalizes at sentence start and
+# mislabels as names ("Clang!", "Hmph", "Yo"). Vetoed when they stand alone.
+_INTERJECTIONS = {
+    "clang", "yo", "hmm", "hmmm", "hmph", "hmpf", "ah", "oh", "eh", "hey", "ha", "haha",
+    "huh", "wow", "ugh", "oof", "psh", "tsk", "heh", "hng", "mm", "mmm", "er", "um", "uh",
+}
 
 # Possessive / contraction tail on a token: 's, ', 'll, 'm, 're, 've, 'd (and curly ').
 _APOS_TAIL_RE = re.compile(r"['’](?:s|ll|m|re|ve|d)?$", re.IGNORECASE)
+
+# Punctuation that must NOT appear inside a clean name span. If a cleaned span still
+# contains any of these, it straddled a quote/sentence boundary (e.g. 'No… Ah!" Li
+# Changshou') and is rejected rather than surfaced as a garbage "name".
+_BAD_IN_NAME_RE = re.compile(r"[\"“”‘’…!?,.:;()\[\]{}]")
 
 # Module-level singleton. ``False`` means "tried and failed, use fallback"; ``None`` means
 # "not loaded yet". We keep the model loaded for the process lifetime (first load ~0.5s).
@@ -85,11 +98,13 @@ def _clean_span(span_text: str) -> str:
     """Normalize an entity span into a candidate name.
 
     - Collapse internal whitespace/newlines (spans can straddle line breaks).
+    - Strip surrounding quote marks ('"Big Sister' -> 'Big Sister').
     - Strip a possessive/contraction tail from the LAST token ("Changshou's" -> "Changshou").
-    - Drop leading determiners/connectives ("The Azure Peak" -> "Azure Peak").
-    - Drop a leading lone pronoun artifact like "I" (from "I'll" / "I'm" if it ever slips in).
+    - Drop leading/trailing determiners/connectives ("The Azure Peak" -> "Azure Peak").
     """
-    tokens = span_text.split()
+    # Collapse whitespace/newlines, then strip wrapping quotes from the whole span.
+    text = " ".join(span_text.split()).strip("\"“”‘’")
+    tokens = text.split()
     if not tokens:
         return ""
     tokens[-1] = _APOS_TAIL_RE.sub("", tokens[-1])
@@ -99,6 +114,34 @@ def _clean_span(span_text: str) -> str:
     while tokens and tokens[-1].lower() in _LEADING_DROP:
         tokens.pop()
     return " ".join(tokens)
+
+
+def _is_name_like(name: str) -> bool:
+    """True if a cleaned span looks like a real name worth surfacing.
+
+    Rejects: empties/single chars, lowercase-leading spans, spans that still carry
+    sentence punctuation (straddled a quote/boundary), spans with a non-capitalized token
+    (a trailing verb like 'Li Changshou frowned'), and lone interjections/stopwords.
+    Inner lowercase connectives ('of'/'the' in 'Court of Dao') are allowed.
+    """
+    if len(name) <= 1 or not name[0].isupper():
+        return False
+    if _BAD_IN_NAME_RE.search(name):
+        return False
+    tokens = name.split()
+    # Every token must be either a capitalized word or an allowed inner connective. This
+    # drops spans where NER glued on a lowercase verb/adverb ("Li Changshou frowned").
+    for tok in tokens:
+        if tok.lower() in _LEADING_DROP:
+            continue
+        if not tok[0].isupper():
+            return False
+    content = [t for t in tokens if t.lower() not in _LEADING_DROP]
+    if not content:
+        return False
+    if len(content) == 1 and content[0].lower() in (_STOPWORDS | _INTERJECTIONS):
+        return False
+    return True
 
 
 def _ner_proper_nouns(text: str, *, limit: int) -> list[str]:
@@ -113,9 +156,7 @@ def _ner_proper_nouns(text: str, *, limit: int) -> list[str]:
         if ent.label_ not in _NAME_LABELS:
             continue
         name = _clean_span(ent.text)
-        # Reject empties, single letters, and all-lowercase spans (NER occasionally tags a
-        # lowercase common noun; a real name here is capitalized).
-        if len(name) <= 1 or not name[0].isupper():
+        if not _is_name_like(name):
             continue
         key = name.casefold()
         counts[key] += 1

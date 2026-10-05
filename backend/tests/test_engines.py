@@ -108,6 +108,60 @@ async def test_mock_engine_extract_reference_deterministic():
     assert "Lin" in r1.candidate_terms and "Azure" in r1.candidate_terms
 
 
+async def test_mock_engine_list_models():
+    assert await MockEngine().list_models() == ["mock"]
+
+
+async def test_ollama_list_models_parses_tags():
+    # Mock Ollama's GET /api/tags response; names come back sorted, blanks dropped.
+    body = json.dumps(
+        {"models": [{"name": "qwen3.5:4b"}, {"name": "qwen3.5:0.8b"}, {"name": ""}, {}]}
+    ).encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/tags"
+        return httpx.Response(200, content=body)
+
+    transport = httpx.MockTransport(handler)
+    engine = OllamaEngine(base_url="http://x:11434", model="qwen3.5:0.8b")
+
+    import app.engines.ollama_engine as oe
+
+    orig = oe.httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs.pop("timeout", None)
+        return orig(transport=transport, **kwargs)
+
+    oe.httpx.AsyncClient = client_factory  # type: ignore[assignment]
+    try:
+        models = await engine.list_models()
+    finally:
+        oe.httpx.AsyncClient = orig  # type: ignore[assignment]
+    assert models == ["qwen3.5:0.8b", "qwen3.5:4b"]  # sorted, "" and {} dropped
+
+
+async def test_ollama_list_models_unreachable_returns_empty():
+    engine = OllamaEngine(base_url="http://127.0.0.1:1", model="m")  # nothing listening
+
+    import app.engines.ollama_engine as oe
+
+    orig = oe.httpx.AsyncClient
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    def client_factory(*args, **kwargs):
+        kwargs.pop("timeout", None)
+        return orig(transport=httpx.MockTransport(failing), **kwargs)
+
+    oe.httpx.AsyncClient = client_factory  # type: ignore[assignment]
+    try:
+        assert await engine.list_models() == []  # degrades, never raises
+    finally:
+        oe.httpx.AsyncClient = orig  # type: ignore[assignment]
+
+
 def test_parse_extraction_strict_json():
     from app.engines.ollama_engine import _parse_extraction
 

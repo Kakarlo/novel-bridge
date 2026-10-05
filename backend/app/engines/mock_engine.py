@@ -74,3 +74,6 @@ class MockEngine(TranslationEngine):
 
     async def health(self) -> bool:
         return True
+
+    async def list_models(self) -> list[str]:
+        return [self.name]

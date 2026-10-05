@@ -90,7 +90,7 @@ term, so the backend now PROPOSES pairings deterministically (no LLM) for the us
 - **ADDED:** `GET /api/translations/{tid}/term-alignment`
   - Response: `AlignmentCandidate[]`, highest `confidence` first. Each:
     `{ source_term: string, surface_form: string, source_count: number,
-   english_count: number, confidence: number (0..1), basis: string }`.
+english_count: number, confidence: number (0..1), basis: string }`.
   - Proposes `source_term → surface_form` pairings by correlating appearance order +
     frequency in the translation's source chapter vs its English output — NOT string
     similarity / transliteration.
@@ -126,3 +126,30 @@ Backend-adjacent copy/display fixes in `references-tab.tsx` (no backend change n
    glossary"** is outdated. Detection is spaCy NER by default now. Reword to describe it as
    automatic name detection (spaCy-based). Do NOT mention the regex fallback — it's an internal
    offline-safety net, not a user-facing detail.
+
+---
+
+## 5. Model picker — backend listing endpoint is ready (NEW, additive)
+
+**Why:** let the user pick which model translates, instead of being stuck on the configured
+default. The engine already accepts a per-request model (`TranslationRequest.model`); the
+backend now exposes the list.
+
+**Backend contract (additive, not gated):**
+
+- **ADDED:** `GET /api/models` → `{ "models": string[], "current": string }`.
+  - `models`: model names the engine can serve (Ollama: live from `/api/tags`, sorted; mock:
+    `["mock"]`). Empty list when the engine is unreachable (degrades, never errors).
+  - `current`: the configured default model (`OLLAMA_MODEL`).
+
+**What the UI should do:**
+
+1. In `client.ts`: add `listModels() => request<{models: string[]; current: string}>("/models")`.
+2. A model picker (dropdown) in the translate view / settings, seeded from `models`, defaulting
+   to `current`. Disable / show "engine unreachable" when `models` is empty. The existing health
+   indicator already tells you reachability.
+3. **Per-request override is NOT wired through the translate endpoint yet.** `TranslateRequest`
+   has no `model` field today — the SSE `POST /projects/{id}/translate` body would need a
+   `model?: string` added and passed into `TranslationRequest.model`. That's a small BACKEND
+   change to do when the picker is built; flag it back to a backend session so the contract
+   changes once. Until then the picker can only _display_ the current model, not switch it.

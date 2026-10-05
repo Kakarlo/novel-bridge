@@ -34,6 +34,16 @@ def _create_project(client, name="S", lang="zh"):
     return r.json()["id"]
 
 
+def test_models_endpoint_lists_engine_models(client):
+    # The model picker's listing endpoint. The mock engine reports ["mock"]; `current`
+    # echoes the configured default model.
+    r = client.get("/api/models")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["models"] == ["mock"]
+    assert "current" in body
+
+
 def test_project_lifecycle(client):
     assert client.get("/api/projects").json() == []
     pid = _create_project(client)

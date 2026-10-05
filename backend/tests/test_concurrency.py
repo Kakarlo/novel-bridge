@@ -59,6 +59,9 @@ class _SlowConcurrencyEngine(TranslationEngine):
     async def health(self) -> bool:
         return True
 
+    async def list_models(self) -> list[str]:
+        return ["slow-test"]
+
 
 def _max_overlap(intervals: list[tuple[float, float]]) -> int:
     """Return the maximum number of intervals overlapping at any instant."""

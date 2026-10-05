@@ -66,6 +66,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "model": settings.ollama_model,
         }
 
+    @app.get("/api/models")
+    async def models(
+        engine: TranslationEngine = Depends(get_translation_engine),
+    ) -> dict:
+        # List models the engine can serve, for the frontend picker. `current` is the
+        # configured default; a per-request override already rides on TranslationRequest.model.
+        # Degrades to an empty list (never raises) when the engine is unreachable.
+        try:
+            available = await engine.list_models()
+        except Exception:  # noqa: BLE001 - never let the listing raise
+            available = []
+        return {"models": available, "current": settings.ollama_model}
+
     app.include_router(projects.router)
     app.include_router(translate.router)
 

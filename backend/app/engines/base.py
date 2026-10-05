@@ -69,3 +69,12 @@ class TranslationEngine(ABC):
     async def health(self) -> bool:
         """Return True if the engine is ready to serve requests."""
         raise NotImplementedError
+
+    @abstractmethod
+    async def list_models(self) -> list[str]:
+        """Return the model names this engine can serve, for the model picker.
+
+        Offline-safe: return ``[]`` (never raise) when the backend is unreachable, so a
+        disconnected engine degrades to "no choices" rather than erroring the endpoint.
+        """
+        raise NotImplementedError

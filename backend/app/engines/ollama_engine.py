@@ -170,3 +170,16 @@ class OllamaEngine(TranslationEngine):
                 return resp.status_code == 200
         except httpx.HTTPError:
             return False
+
+    async def list_models(self) -> list[str]:
+        """List installed models via Ollama's GET /api/tags. [] if unreachable."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{self._base_url}/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            return []
+        models = data.get("models") or []
+        names = [m.get("name", "") for m in models if isinstance(m, dict)]
+        return sorted(n for n in names if n)

@@ -58,6 +58,17 @@ bring-your-own LLM API-token flow, and accounts/cloud only if adoption warrants 
    probe is now real (`reachable`). Model picker still a backend-first TODO — don't build it.
 5. **Reference derived-context UI** — DONE. References reader shows summary + candidate-term
    chips with a "Re-summarize" action; chips promote into the glossary.
+6. **Field-fix #2/#4 (reference derived context, refined)** — DONE. Two separate chip groups:
+   rule-based "Detected names" (backend `detected_names`) and AI "Candidate terms". Promoted
+   chips are hidden by cross-checking the glossary on load, so they survive refresh and don't
+   pile up across references (`ReferenceChapter.detected_names`).
+7. **Field-fix #1 (draft persistence + stream guardrails)** — DONE. `translate-tab` persists a
+   per-project draft (raw + lang + partial output) to localStorage, restored on mount/project
+   switch; an interrupted stream is restored as a recoverable draft. While streaming: a
+   `beforeunload` native warning (refresh/close) and a confirm dialog on project switch, via a
+   tiny app-wide `use-active-stream` store (`setStreaming`/`useIsStreaming`). Switching tabs
+   keeps the stream alive (TranslateTab stays mounted). Server-side stream resume is out of
+   scope (live HTTP connection; no job registry — documented).
 
 ## Next major frontend work — English-first glossary with in-context approval (spec task 14)
 

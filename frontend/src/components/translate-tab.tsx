@@ -16,6 +16,7 @@ import {
 
 import { api } from "@/api/client";
 import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang, type Translation } from "@/api/types";
+import { setStreaming } from "@/hooks/use-active-stream";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +26,59 @@ import { HistoryPanel } from "@/components/history-panel";
 import { langLabel } from "@/lib/format";
 
 type Status = "idle" | "streaming" | "done" | "error" | "viewing";
+
+// --- Draft persistence (field-fix #1) -------------------------------------
+// The in-progress stream can't survive a refresh (live HTTP connection, no server-side
+// resume), but the user's typed input should. We persist a per-project draft — the raw
+// source, the chosen language, and any partial output — to localStorage, and restore it on
+// mount. Cleared on a successful save or when the user starts a new translation.
+interface Draft {
+  raw: string;
+  lang: SourceLang;
+  output: string;
+  // Whether `output` is a partial stream that was interrupted (refresh mid-translation).
+  unfinished: boolean;
+}
+
+const draftKey = (projectId: string) => `nb:draft:${projectId}`;
+
+function loadDraft(projectId: string): Draft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(projectId));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<Draft>;
+    if (typeof d.raw !== "string") return null;
+    return {
+      raw: d.raw,
+      lang: d.lang === "ja" ? "ja" : "zh",
+      output: typeof d.output === "string" ? d.output : "",
+      unfinished: !!d.unfinished,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(projectId: string, draft: Draft) {
+  try {
+    // Nothing worth persisting -> clear instead of writing an empty draft.
+    if (!draft.raw.trim() && !draft.output.trim()) {
+      localStorage.removeItem(draftKey(projectId));
+      return;
+    }
+    localStorage.setItem(draftKey(projectId), JSON.stringify(draft));
+  } catch {
+    /* storage full / unavailable — draft persistence is best-effort */
+  }
+}
+
+function clearDraft(projectId: string) {
+  try {
+    localStorage.removeItem(draftKey(projectId));
+  } catch {
+    /* ignore */
+  }
+}
 
 interface TranslateTabProps {
   projectId: string;
@@ -52,19 +106,58 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   const stickRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
 
-  // Reset the workspace when switching projects, but keep the raw input
-  // tied to the project the user is on.
+  // Reset the workspace when switching projects, restoring any saved draft so the user's
+  // typed input (and any partial output) survives a refresh or a project switch.
   useEffect(() => {
     abortRef.current?.abort();
-    setRaw("");
-    setOutput("");
-    setStatus("idle");
-    setErrorMsg(null);
+    const draft = loadDraft(projectId);
+    if (draft) {
+      setRaw(draft.raw);
+      setOutput(draft.output);
+      setLang(draft.lang);
+      // A restored partial stream can't resume; show it as a recovered draft, and warn.
+      setStatus(draft.output ? "error" : "idle");
+      setErrorMsg(
+        draft.unfinished && draft.output
+          ? "This translation was interrupted (page reload). The partial result is restored below — press Translate to run it again."
+          : null
+      );
+    } else {
+      setRaw("");
+      setOutput("");
+      setStatus("idle");
+      setErrorMsg(null);
+      setLang(defaultLang);
+    }
     setInfoMsg(null);
     setViewingId(null);
     setHistoryOpen(false);
-    setLang(defaultLang);
   }, [projectId, defaultLang]);
+
+  // Persist the draft as the user types / as output streams in. Debounced lightly via the
+  // effect dependency list (React batches), good enough for a local-first app.
+  useEffect(() => {
+    // Don't persist while viewing a saved translation — that's not a draft.
+    if (status === "viewing") return;
+    saveDraft(projectId, { raw, lang, output, unfinished: status === "streaming" });
+  }, [projectId, raw, lang, output, status]);
+
+  // Publish streaming state app-wide so a project switch can be guarded (field-fix #1),
+  // and warn on refresh/close while a stream is live. Clear the flag on unmount.
+  useEffect(() => {
+    const isStreaming = status === "streaming";
+    setStreaming(isStreaming);
+    if (!isStreaming) return;
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // triggers the browser's native "Leave site?" prompt
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [status]);
+
+  useEffect(() => () => setStreaming(false), []);
 
   // Track whether the user is pinned to the bottom of the output pane. When
   // they scroll up mid-stream we stop auto-following; when they come back to
@@ -139,6 +232,8 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           setStatus("done");
           setViewingId(event.translation_id);
           setHistoryKey((k) => k + 1);
+          // Saved to history now — the draft is no longer needed.
+          clearDraft(projectId);
           onSaved?.();
           toast.success("Translation saved");
           return;
@@ -179,6 +274,8 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setOutput("");
     setViewingId(null);
     setStatus("idle");
+    setErrorMsg(null);
+    clearDraft(projectId);
   }
 
   return (

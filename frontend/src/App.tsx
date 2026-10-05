@@ -2,15 +2,21 @@ import { useEffect, useState } from "react";
 import { BookOpen } from "lucide-react";
 
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { ProjectWorkspace } from "@/components/project-workspace";
 import { useProjects } from "@/hooks/use-projects";
 import { useTheme } from "@/hooks/use-theme";
+import { useIsStreaming } from "@/hooks/use-active-stream";
 
 function App() {
   const { projects, loading, error, create, remove } = useProjects();
   const { theme, toggle: toggleTheme } = useTheme();
   const [activeId, setActiveId] = useState<string | null>(null);
+  // A pending project switch awaiting confirmation because a translation is streaming
+  // (field-fix #1). Switching projects unmounts the TranslateTab and drops the stream.
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const streaming = useIsStreaming();
 
   // Auto-select the first project once loaded, and keep selection valid
   // after deletes.
@@ -20,6 +26,17 @@ function App() {
     setActiveId(projects[0]?.id ?? null);
   }, [projects, loading, activeId]);
 
+  // Guard a project switch while a translation is streaming: confirm first, since
+  // leaving the current project stops the in-progress run (the draft input is preserved).
+  function selectProject(id: string) {
+    if (id === activeId) return;
+    if (streaming) {
+      setPendingSwitch(id);
+      return;
+    }
+    setActiveId(id);
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <ProjectSidebar
@@ -28,7 +45,7 @@ function App() {
         loading={loading}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onSelect={setActiveId}
+        onSelect={selectProject}
         onCreate={create}
         onDelete={async (id) => {
           await remove(id);
@@ -52,6 +69,19 @@ function App() {
       </main>
 
       <Toaster position="bottom-right" theme={theme} />
+
+      <ConfirmDialog
+        open={pendingSwitch !== null}
+        onOpenChange={(o) => !o && setPendingSwitch(null)}
+        title="A translation is in progress"
+        description="Switching series will stop the current translation (it can't be resumed). Your source text is saved as a draft. Continue?"
+        confirmLabel="Switch series"
+        destructive
+        onConfirm={() => {
+          if (pendingSwitch) setActiveId(pendingSwitch);
+          setPendingSwitch(null);
+        }}
+      />
     </div>
   );
 }

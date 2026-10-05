@@ -25,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { HistoryPanel } from "@/components/history-panel";
 import { TranslationReview } from "@/components/translation-review";
 import { ModelPicker } from "@/components/model-picker";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { langLabel } from "@/lib/format";
 
 type Status = "idle" | "streaming" | "done" | "error" | "viewing";
@@ -99,6 +100,9 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // A saved translation the user clicked WHILE a stream is running, awaiting confirmation —
+  // loading it would abort the in-progress translation (same guard as a project switch).
+  const [pendingLoad, setPendingLoad] = useState<Translation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const outputScrollRef = useRef<HTMLDivElement | null>(null);
   // "Stick to bottom" autoscroll: only auto-follow the stream while the user is
@@ -133,6 +137,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     }
     setInfoMsg(null);
     setViewingId(null);
+    setPendingLoad(null);
     setHistoryOpen(false);
   }, [projectId, defaultLang]);
 
@@ -260,7 +265,17 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setStatus(output ? "done" : "idle");
   }
 
-  function loadSaved(t: Translation) {
+  // Guard: loading a saved translation aborts a live stream (no server-side resume). While
+  // streaming, confirm first; otherwise load immediately.
+  function requestLoad(t: Translation) {
+    if (status === "streaming") {
+      setPendingLoad(t);
+      return;
+    }
+    applyLoad(t);
+  }
+
+  function applyLoad(t: Translation) {
     abortRef.current?.abort();
     setRaw(t.raw_text);
     setOutput(t.output_text);
@@ -440,7 +455,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
             refreshKey={historyKey}
             activeId={viewingId}
             onClose={() => setHistoryOpen(false)}
-            onSelect={loadSaved}
+            onSelect={requestLoad}
             onDeleted={(tid) => {
               // If the deleted translation is the one loaded in the panes,
               // reset to a fresh editor so we're not showing a stale save.
@@ -451,6 +466,21 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           />
         )}
       </div>
+
+      {/* Guard loading a saved translation while a stream is live — same stance as the
+          project-switch guard (field-fix #1): the running translation can't be resumed. */}
+      <ConfirmDialog
+        open={pendingLoad !== null}
+        onOpenChange={(o) => !o && setPendingLoad(null)}
+        title="A translation is in progress"
+        description="Opening a saved translation will stop the current one (it can't be resumed). Your source text is saved as a draft. Continue?"
+        confirmLabel="Open saved"
+        destructive
+        onConfirm={() => {
+          if (pendingLoad) applyLoad(pendingLoad);
+          setPendingLoad(null);
+        }}
+      />
     </div>
   );
 }

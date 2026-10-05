@@ -32,7 +32,9 @@ export function ModelPicker() {
   return (
     <div className="flex items-center gap-1.5">
       <Cpu className="size-4 text-muted-foreground" />
-      {/* value = the configured default; empty falls through to the placeholder below. */}
+      {/* Read-only until the translate body carries a `model` field (BACKEND_TODO #2): the
+          whole Select is disabled, so it shows `current` and can't be changed. value = the
+          configured default; empty falls through to the placeholder below. */}
       <Select value={current} disabled>
         <SelectTrigger
           size="sm"

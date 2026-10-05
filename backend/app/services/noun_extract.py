@@ -39,15 +39,35 @@ _STOPWORDS = {
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
     "chapter", "part", "volume", "prologue", "epilogue",
+    # Conjunctive adverbs / interjections / quantifiers that commonly OPEN a sentence and
+    # get capitalized — frequent false positives in novel prose (seen in testing).
+    "however", "although", "though", "therefore", "thus", "hence", "meanwhile",
+    "moreover", "furthermore", "nevertheless", "nonetheless", "besides", "instead",
+    "otherwise", "unfortunately", "fortunately", "suddenly", "finally", "eventually",
+    "perhaps", "maybe", "indeed", "surely", "certainly", "clearly", "obviously",
+    "everyone", "everything", "everywhere", "someone", "something", "somewhere",
+    "anyone", "anything", "nobody", "nothing", "ah", "oh", "eh", "hmm", "well",
+    "yes", "okay", "ok", "please", "thanks", "hello", "goodbye",
+    "all", "some", "many", "most", "few", "each", "every", "both", "either", "neither",
+    "because", "since", "unless", "until", "whether", "whereas",
 }
 
 # Short lowercase connectives allowed to appear *inside* a multi-word proper-noun run.
 _CONNECTIVES = {"of", "the", "and", "de", "van", "von", "da", "di"}
 
-# A capitalized token: starts uppercase, may contain more letters/apostrophes/hyphens.
-_CAP_TOKEN = r"[A-Z][\w'’-]*"
+# A capitalized token: starts uppercase, letters/digits/hyphens (apostrophes handled
+# separately so possessives/contractions don't become part of the name).
+_CAP_TOKEN = r"[A-Z][A-Za-z0-9-]*(?:['’][A-Za-z]+)?"
 # A run: a capitalized token, then zero+ (connective | capitalized token).
 _RUN_RE = re.compile(rf"{_CAP_TOKEN}(?:\s+(?:{'|'.join(_CONNECTIVES)}|{_CAP_TOKEN}))*")
+
+# Possessive / contraction tail on a token: 's, ', 'll, 'm, 're, 've, 'd (and curly ').
+_APOS_TAIL_RE = re.compile(r"['’](?:s|ll|m|re|ve|d)?$", re.IGNORECASE)
+
+
+def _strip_apostrophe(token: str) -> str:
+    """Drop a possessive/contraction tail: Changshou's -> Changshou, I'm -> I, Sister' -> Sister."""
+    return _APOS_TAIL_RE.sub("", token)
 
 # Sentence boundary just before a position: start of text, or ., !, ?, newline, quote, colon.
 _SENTENCE_START_RE = re.compile(r"(?:^|[.!?;:\n\r\"“”‘’()\[\]])\s*$")
@@ -59,11 +79,23 @@ def _is_sentence_start(text: str, pos: int) -> bool:
 
 
 def _trim_run(run: str) -> str:
-    """Strip leading/trailing connectives from a run (e.g. 'The Azure' -> 'Azure')."""
-    tokens = run.split()
-    while tokens and tokens[0].lower() in _CONNECTIVES:
+    """Clean a run into a candidate name.
+
+    - Strip possessive/contraction tails from each token (Changshou's -> Changshou).
+    - Strip leading/trailing connectives ('the', 'of') AND leading/trailing stopwords, so a
+      sentence-initial opener merged into a run is removed ('Although Li Changshou' ->
+      'Li Changshou'; 'The Azure' -> 'Azure').
+    """
+    tokens = [_strip_apostrophe(t) for t in run.split()]
+    tokens = [t for t in tokens if t]  # a bare apostrophe token collapses to ""
+
+    def _droppable(tok: str) -> bool:
+        low = tok.lower()
+        return low in _CONNECTIVES or low in _STOPWORDS
+
+    while tokens and _droppable(tokens[0]):
         tokens.pop(0)
-    while tokens and tokens[-1].lower() in _CONNECTIVES:
+    while tokens and _droppable(tokens[-1]):
         tokens.pop()
     return " ".join(tokens)
 

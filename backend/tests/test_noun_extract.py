@@ -74,3 +74,45 @@ def test_limit_respected():
     text = " ".join(f"saw Name{i} there." for i in range(50))
     names = extract_proper_nouns(text, limit=5)
     assert len(names) == 5
+
+
+# --- Regression tests for the screenshot false positives (field feedback) ---
+
+def test_possessive_stripped_to_base_name():
+    text = "the sword was Li Changshou's. Later Li Changshou spoke."
+    names = extract_proper_nouns(text)
+    assert "Li Changshou" in names
+    # No possessive variant leaks in.
+    assert not any(n.endswith("'s") or n.endswith("’s") for n in names)
+    assert "Li Changshou's" not in names
+
+
+def test_trailing_apostrophe_variant_not_separate():
+    text = "Big Sister' words. Big Sister's plan. the elder told Big Sister to wait."
+    names = extract_proper_nouns(text)
+    assert "Big Sister" in names
+    assert "Big Sister'" not in names
+    assert "Big Sister's" not in names
+
+
+def test_contractions_not_treated_as_names():
+    text = "I'm fine. I'll go. the man watched."
+    names = extract_proper_nouns(text)
+    assert "I'm" not in names
+    assert "I'll" not in names
+    assert "I" not in names
+
+
+def test_sentence_opener_adverbs_dropped():
+    text = "However it rained. Although skies cleared. Unfortunately the road flooded. Everyone left."
+    names = extract_proper_nouns(text)
+    for w in ["However", "Although", "Unfortunately", "Everyone"]:
+        assert w not in names
+
+
+def test_opener_stripped_from_real_name_run():
+    text = "Although Li Changshou hesitated, Li Changshou pressed on."
+    names = extract_proper_nouns(text)
+    assert "Li Changshou" in names
+    assert "Although Li Changshou" not in names
+    assert "Although" not in names

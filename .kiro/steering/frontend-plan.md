@@ -62,7 +62,14 @@ bring-your-own LLM API-token flow, and accounts/cloud only if adoption warrants 
    rule-based "Detected names" (backend `detected_names`) and AI "Candidate terms". Promoted
    chips are hidden by cross-checking the glossary on load, so they survive refresh and don't
    pile up across references (`ReferenceChapter.detected_names`).
-7. **Field-fix #1 (draft persistence + stream guardrails)** — DONE. `translate-tab` persists a
+7. **Field feedback round 2 (desktop polish)** — DONE. (a) `project-workspace` tabs are
+   `forceMount` + CSS-hidden so switching tabs never unmounts content — a streaming translation
+   and the draft survive a tab switch. (b) Active tab is controlled + persisted per project
+   (`nb:tab:{id}`); selected project persisted (`nb:active-project`) so a refresh returns to the
+   same place. (c) Reference reader widened to ~78% / max-w-5xl. (d) Candidate/detected chips
+   gained a dismiss (✕) action persisted per reference (`nb:dismissed-terms:{refId}`), separate
+   from add-to-glossary. (e) Glossary row actions enlarged to `icon-sm` and always visible.
+8. **Field-fix #1 (draft persistence + stream guardrails)** — DONE. `translate-tab` persists a
    per-project draft (raw + lang + partial output) to localStorage, restored on mount/project
    switch; an interrupted stream is restored as a recoverable draft. While streaming: a
    `beforeunload` native warning (refresh/close) and a confirm dialog on project switch, via a

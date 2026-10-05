@@ -199,51 +199,51 @@ export function GlossaryTab({ projectId }: { projectId: string }) {
                         )}
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        {/* Approve / reject (hidden until hover/focus to keep rows calm) */}
-                        <div className="flex gap-0.5 opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100">
-                          {entry.status !== "approved" && (
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              aria-label={`Approve ${entry.surface_form}`}
-                              title="Approve"
-                              onClick={() => handleStatus(entry, "approved")}
-                            >
-                              <ThumbsUp className="text-emerald-600 dark:text-emerald-400" />
-                            </Button>
-                          )}
-                          {entry.status !== "rejected" && (
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              aria-label={`Reject ${entry.surface_form}`}
-                              title="Reject"
-                              onClick={() => handleStatus(entry, "rejected")}
-                            >
-                              <ThumbsDown className="text-muted-foreground" />
-                            </Button>
-                          )}
+                      {/* Row actions — always visible and comfortably sized for desktop. */}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {entry.status !== "approved" && (
                           <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            aria-label={`Edit ${entry.surface_form}`}
-                            onClick={() => {
-                              setEditingId(entry.id);
-                              setAdding(false);
-                            }}
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label={`Approve ${entry.surface_form}`}
+                            title="Approve"
+                            onClick={() => handleStatus(entry, "approved")}
                           >
-                            <Pencil />
+                            <ThumbsUp className="text-emerald-600 dark:text-emerald-400" />
                           </Button>
+                        )}
+                        {entry.status !== "rejected" && (
                           <Button
-                            size="icon-xs"
-                            variant="ghost"
-                            aria-label={`Delete ${entry.surface_form}`}
-                            onClick={() => setPendingDelete(entry)}
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label={`Reject ${entry.surface_form}`}
+                            title="Reject"
+                            onClick={() => handleStatus(entry, "rejected")}
                           >
-                            <Trash2 className="text-muted-foreground" />
+                            <ThumbsDown className="text-muted-foreground" />
                           </Button>
-                        </div>
+                        )}
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Edit ${entry.surface_form}`}
+                          title="Edit"
+                          onClick={() => {
+                            setEditingId(entry.id);
+                            setAdding(false);
+                          }}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Delete ${entry.surface_form}`}
+                          title="Delete"
+                          onClick={() => setPendingDelete(entry)}
+                        >
+                          <Trash2 className="text-muted-foreground" />
+                        </Button>
                       </div>
                     </li>
                   )

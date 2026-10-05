@@ -326,7 +326,8 @@ function ReferenceReader({
         </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-2xl px-6 py-8">
+        {/* Wide reading column for desktop (~75-80% of available width). */}
+        <div className="mx-auto w-[78%] min-w-0 max-w-5xl px-6 py-8">
           <DerivedContext projectId={projectId} reference={reference} />
           <article className="mt-6 border-t pt-6 font-serif text-[1.02rem] leading-[1.75] whitespace-pre-wrap">
             {reference.content}
@@ -365,10 +366,39 @@ function ReferenceReader({
  * and drop any term whose surface form already exists (case-insensitive), so the chips
  * reflect reality after a refresh and don't pile up as more references are added.
  */
+// Dismissed candidate terms per reference (field feedback): a term the user doesn't want
+// cluttering the suggestions but doesn't want in the glossary either. Persisted to
+// localStorage so dismissals survive a refresh (per-browser; cheap, no backend/schema change).
+const dismissKey = (refId: string) => `nb:dismissed-terms:${refId}`;
+
+function loadDismissed(refId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(dismissKey(refId));
+    const arr = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(arr) ? arr.map((t) => String(t).toLowerCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDismissed(refId: string, set: Set<string>) {
+  try {
+    localStorage.setItem(dismissKey(refId), JSON.stringify([...set]));
+  } catch {
+    /* ignore */
+  }
+}
+
 function DerivedContext({ projectId, reference }: { projectId: string; reference: ReferenceChapter }) {
   // Surface forms already in the glossary (case-insensitive), fetched on load so chip
   // state survives a refresh instead of living only in session state.
   const [inGlossary, setInGlossary] = useState<Set<string>>(new Set());
+  // Locally dismissed terms (lowercased), restored from localStorage.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed(reference.id));
+
+  useEffect(() => {
+    setDismissed(loadDismissed(reference.id));
+  }, [reference.id]);
 
   useEffect(() => {
     let active = true;
@@ -385,14 +415,14 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     };
   }, [projectId, reference.id]);
 
+  const hidden = (t: string) => inGlossary.has(t.toLowerCase()) || dismissed.has(t.toLowerCase());
+
   const hasSummary = !!reference.summary?.trim();
-  // Hide terms already in the glossary. Detected (rule-based) names come first; drop any
-  // that also appear in the AI candidate list to avoid showing the same name twice.
-  const detected = (reference.detected_names ?? []).filter((t) => !inGlossary.has(t.toLowerCase()));
+  // Hide terms already in the glossary or dismissed. Detected (rule-based) names come first;
+  // drop any that also appear in the AI candidate list to avoid showing the same name twice.
+  const detected = (reference.detected_names ?? []).filter((t) => !hidden(t));
   const detectedLower = new Set(detected.map((t) => t.toLowerCase()));
-  const candidates = (reference.candidate_terms ?? []).filter(
-    (t) => !inGlossary.has(t.toLowerCase()) && !detectedLower.has(t.toLowerCase())
-  );
+  const candidates = (reference.candidate_terms ?? []).filter((t) => !hidden(t) && !detectedLower.has(t.toLowerCase()));
 
   const nothingToShow = !hasSummary && detected.length === 0 && candidates.length === 0;
   if (nothingToShow) {
@@ -419,18 +449,38 @@ function DerivedContext({ projectId, reference }: { projectId: string; reference
     }
   }
 
+  function dismiss(term: string) {
+    setDismissed((prev) => {
+      const next = new Set(prev).add(term.toLowerCase());
+      saveDismissed(reference.id, next);
+      return next;
+    });
+  }
+
+  // Each chip: click the name to add it to the glossary; click the ✕ to dismiss it from
+  // the suggestions (persisted locally) without touching the glossary.
   const chip = (term: string) => (
     <li key={term}>
-      <Button
-        size="xs"
-        variant="outline"
-        className="h-6 gap-1 font-normal"
-        onClick={() => promote(term)}
-        title="Add to glossary"
-      >
-        {term}
-        <Plus className="size-3 opacity-70" />
-      </Button>
+      <span className="inline-flex h-7 items-center overflow-hidden rounded-md border bg-background">
+        <button
+          type="button"
+          onClick={() => promote(term)}
+          title="Add to glossary"
+          className="inline-flex h-full items-center gap-1 px-2 text-sm font-normal transition-colors hover:bg-muted"
+        >
+          {term}
+          <Plus className="size-3 opacity-70" />
+        </button>
+        <button
+          type="button"
+          onClick={() => dismiss(term)}
+          aria-label={`Dismiss ${term}`}
+          title="Dismiss (remove from suggestions)"
+          className="inline-flex h-full items-center border-l px-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        >
+          <X className="size-3" />
+        </button>
+      </span>
     </li>
   );
 

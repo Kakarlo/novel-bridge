@@ -18,13 +18,29 @@ function App() {
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
   const streaming = useIsStreaming();
 
-  // Auto-select the first project once loaded, and keep selection valid
-  // after deletes.
+  // Auto-select a project once loaded: prefer the last-selected one (persisted), else the
+  // first. Keeps selection valid after deletes.
   useEffect(() => {
     if (loading) return;
     if (activeId && projects.some((p) => p.id === activeId)) return;
-    setActiveId(projects[0]?.id ?? null);
+    let remembered: string | null = null;
+    try {
+      remembered = localStorage.getItem("nb:active-project");
+    } catch {
+      /* ignore */
+    }
+    const next = (remembered && projects.some((p) => p.id === remembered) ? remembered : projects[0]?.id) ?? null;
+    setActiveId(next);
   }, [projects, loading, activeId]);
+
+  // Persist the selected project so a refresh returns to it (field feedback #5).
+  useEffect(() => {
+    try {
+      if (activeId) localStorage.setItem("nb:active-project", activeId);
+    } catch {
+      /* ignore */
+    }
+  }, [activeId]);
 
   // Guard a project switch while a translation is streaming: confirm first, since
   // leaving the current project stops the in-progress run (the draft input is preserved).

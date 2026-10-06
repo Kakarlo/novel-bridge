@@ -110,26 +110,27 @@ class TermMatch(BaseModel):
     snippets: list[str] = Field(default_factory=list)
 
 
-class AlignmentCandidate(BaseModel):
-    """A proposed source-term -> English-name pairing (deterministic, no LLM).
+class GlossaryPairSuggestion(BaseModel):
+    """An LLM-paired source-term -> English-spelling glossary suggestion (task: replace the
+    deterministic aligner).
 
-    Produced by ``services.term_align.align_terms`` by correlating where/how often a source
-    proper noun appears in the source chapter with where/how often an English name appears in
-    the translation — same story told in the same order, so matching ROLE (appearance rank +
-    frequency), NOT string similarity or a transliteration. A PROPOSAL only: the user confirms
-    a pair, which sets ``source_term`` on the glossary entry via the normal glossary write.
+    The old ``AlignmentCandidate`` paired by appearance-rank/frequency correlation — a
+    heuristic that produced near-random pairs because that signal doesn't survive
+    translation. This replaces it: the engine reads the source chapter AND its English
+    translation and binds each source term to the exact English spelling the translator
+    actually used (``services.prompt.build_glossary_pairing_messages``). These are
+    suggestions — the frontend adds a chosen pair to the glossary as a ``candidate`` for the
+    user to approve; nothing is written automatically.
 
-    - ``confidence``: 0..1, how cleanly the two line up (unambiguous rank + matching frequency
-      is high; ties / mismatched counts are low).
-    - ``basis``: short human-readable reason ("appearance-order + frequency") for an honest UI.
+    ``category``/``gender`` mirror ``GlossaryEntry`` so a confirmed pair maps straight onto a
+    glossary row. ``gender`` is meaningful for characters (steers zh->en pronoun drift).
     """
 
     source_term: str
     surface_form: str
-    source_count: int
-    english_count: int
-    confidence: float
-    basis: str
+    category: GlossaryCategory = "term"
+    gender: Gender | None = None
+    note: str | None = None
 
 
 # --- API request models -----------------------------------------------------

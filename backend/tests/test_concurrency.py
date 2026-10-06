@@ -56,6 +56,9 @@ class _SlowConcurrencyEngine(TranslationEngine):
     async def extract_reference(self, content, source_lang):
         return ReferenceExtraction(summary="", candidate_terms=[])
 
+    async def extract_glossary(self, raw_text, output_text, source_lang, candidates=None, model=None):
+        return []
+
     async def health(self) -> bool:
         return True
 

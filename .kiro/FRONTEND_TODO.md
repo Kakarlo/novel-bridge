@@ -79,38 +79,31 @@ ordering key), not a frontend-only fix.
 
 ---
 
-## 3. Source↔English term-alignment proposals (NEW, experimental, additive) — DONE
+## 3. Source↔English glossary pairing — REWORKED: deterministic aligner → LLM pairing (DONE)
 
-**Why:** a glossary entry only becomes authoritative once it has BOTH the English
-`surface_form` AND the original `source_term`. Users know the English name but not the source
-term, so the backend now PROPOSES pairings deterministically (no LLM) for the user to confirm.
+**Was:** a deterministic `GET /translations/{tid}/term-alignment` that correlated appearance
+order + frequency between the source chapter and its English output. **Removed** — the
+heuristic produced near-random pairs (the signal doesn't survive translation), so users
+couldn't validate the suggestions. Backend `services/term_align.py` + the `AlignmentCandidate`
+model + its tests are gone.
 
-**Backend contract (additive, experimental — gated by `NB_SOURCE_TERMS`):**
+**Now:** `POST /api/translations/{tid}/extract-glossary` runs a single LLM call that reads the
+source chapter AND its English translation and binds each source term to the EXACT English
+spelling the translator used (never invents a romanization). A deterministic pre-pass
+(`extract_source_terms` when `NB_SOURCE_TERMS` is on + `extract_proper_nouns` always) supplies
+candidate hints so a weak local model gets a short, focused list (cheap tokens).
 
-- **ADDED:** `GET /api/translations/{tid}/term-alignment`
-  - Response: `AlignmentCandidate[]`, highest `confidence` first. Each:
-    `{ source_term: string, surface_form: string, source_count: number,
-english_count: number, confidence: number (0..1), basis: string }`.
-  - Proposes `source_term → surface_form` pairings by correlating appearance order +
-    frequency in the translation's source chapter vs its English output — NOT string
-    similarity / transliteration.
-  - `404` when the feature is off or the translation is missing; `[]` when the source-term
-    spaCy model isn't installed or nothing aligns. (Same gating/degradation as `/source-terms`.)
+**Contract:**
 
-**What the UI should do:**
+- `POST /api/translations/{tid}/extract-glossary` → `GlossaryPairSuggestion[]`:
+  `{ source_term, surface_form, category, gender, note }`.
+- NOT gated — always available (the source-term pre-filter enhances but isn't required).
+- `404` when the translation is missing; `[]` on any engine error (degrades, never crashes).
+- POST (not GET) because it triggers an LLM call — run on user action, not on load.
 
-1. In `src/api/types.ts`: add an `AlignmentCandidate` type; in `client.ts` add
-   `translationTermAlignment(tid) => request<AlignmentCandidate[]>(\`/translations/${tid}/term-alignment\`)`.
-2. In the translation review view, show a lightweight "Suggested source↔English pairs" panel:
-   each row = `source_term  →  surface_form` with the confidence shown honestly (e.g. a
-   low/med/high chip from the 0..1 value) and the counts. **These are guesses** — the small zh
-   model can mis-segment and mis-pair; present them as suggestions, not facts.
-3. **Confirm** sets the pairing via the EXISTING glossary write — no new endpoint needed:
-   `PUT /api/glossary/{entryId}` with `{ source_term }` (the entry is found by its
-   `surface_form`), or `POST /api/projects/{id}/glossary` with `{ surface_form, source_term }`
-   (upserts). A confirmed pair becomes an authoritative glossary mapping that steers the next
-   translation. **Reject** just dismisses the suggestion (no backend call).
-4. Keep it lightweight (table stakes, not a studio) — same stance as the in-context review UI.
+**Frontend (DONE):** `types.ts` `GlossaryPairSuggestion`; `client.ts`
+`translationExtractGlossary(tid)` (POST); `translation-review.tsx` gained a "Suggest pairs"
+button. Confirm upserts via `POST /glossary`; dismiss hides the row.
 
 ---
 

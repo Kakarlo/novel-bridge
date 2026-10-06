@@ -39,6 +39,33 @@ class ReferenceExtraction:
     candidate_terms: list[str] = field(default_factory=list)
 
 
+@dataclass
+class GlossaryPair:
+    """One LLM-paired glossary candidate: a source term bound to its English spelling.
+
+    This is the replacement for the old deterministic appearance-rank/frequency aligner
+    (``services/term_align.py``). That heuristic pairing produced near-random results
+    because the signal it used (where/how often a name appears) does not survive
+    translation reliably — users couldn't validate the output.
+
+    The LLM does the correlation instead: given the raw source chapter and its English
+    translation (which share the SAME story and the translator's ACTUAL chosen spellings),
+    it binds each source term to the exact English form that appears in the translation.
+    It never invents a new romanization; ``surface_form`` is the spelling already in the
+    output. Rows land as ``candidate`` glossary entries for the user to approve.
+
+    - ``category``/``gender`` mirror the glossary model (``character|title|term``; gender
+      is meaningful for characters and steers zh->en pronoun consistency).
+    - ``note`` is a short optional disambiguator the model may add (e.g. "protagonist").
+    """
+
+    source_term: str
+    surface_form: str
+    category: str = "term"
+    gender: str | None = None
+    note: str | None = None
+
+
 class TranslationEngine(ABC):
     """All engines conform to this streaming-first interface."""
 
@@ -62,6 +89,37 @@ class TranslationEngine(ABC):
         compact result is what later translations consume instead of the raw text.
         ``detected_names`` are optional rule-based proper-noun hints (field-fix #2) the
         engine may use to anchor its extraction.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def extract_glossary(
+        self,
+        raw_text: str,
+        output_text: str,
+        source_lang: SourceLang,
+        candidates: list[str] | None = None,
+        model: str | None = None,
+    ) -> list[GlossaryPair]:
+        """Pair source terms to the English spellings used in a translation.
+
+        Replaces the deterministic aligner. Given a source chapter (``raw_text``) and its
+        English ``output_text`` — same story, translator's real spellings — return paired
+        ``GlossaryPair`` candidates for the user to approve.
+
+        ``candidates`` is an optional deterministic pre-filter (source-language proper nouns
+        from ``services.source_terms`` and/or English names from ``services.noun_extract``).
+        Passing a short list keeps the prompt small and cheap (the project's token-saving
+        strategy for weak local models) and anchors the model to real recurring terms; the
+        engine may still surface pairs beyond the hints. When ``candidates`` is empty the
+        engine extracts from the texts alone.
+
+        ``model`` optionally overrides the engine's default model for THIS call only. Pairing
+        names correctly is accuracy-sensitive, so callers may pass a stronger model here than
+        they would use for bulk translation; omitted → the engine's configured default.
+
+        Offline-safe: return ``[]`` (never raise) when the backend is unreachable or the
+        response can't be parsed, so a flaky model degrades to "no suggestions".
         """
         raise NotImplementedError
 

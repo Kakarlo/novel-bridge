@@ -3,7 +3,7 @@
 
 import { streamSse } from "./sse";
 import type {
-  AlignmentCandidate,
+  GlossaryPairSuggestion,
   ModelsResponse,
   GlossaryCreate,
   GlossaryEntry,
@@ -133,9 +133,11 @@ export const api = {
   // references, which are English). A thrown 404 = feature off → render nothing; `[]` =
   // model unavailable → render nothing.
   translationSourceTerms: (tid: string) => request<string[]>(`/translations/${tid}/source-terms`),
-  // EXPERIMENTAL (gated by NB_SOURCE_TERMS): proposed source↔English glossary pairings for a
-  // saved translation, highest confidence first (FRONTEND_TODO #3). Same 404/[] gating.
-  translationTermAlignment: (tid: string) => request<AlignmentCandidate[]>(`/translations/${tid}/term-alignment`),
+  // LLM-paired glossary extraction from a saved translation. Returns paired source→English
+  // suggestions for the user to confirm into the glossary. Not gated (always available);
+  // replaces the old deterministic term-alignment endpoint.
+  translationExtractGlossary: (tid: string) =>
+    request<GlossaryPairSuggestion[]>(`/translations/${tid}/extract-glossary`, { method: "POST" }),
 
   /**
    * Open the SSE translate stream. Returns an async iterator of parsed events;

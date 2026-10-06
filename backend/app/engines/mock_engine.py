@@ -11,6 +11,7 @@ import re
 from collections.abc import AsyncIterator
 
 from app.engines.base import (
+    GlossaryPair,
     ReferenceExtraction,
     TranslationChunk,
     TranslationEngine,
@@ -71,6 +72,36 @@ class MockEngine(TranslationEngine):
         terms = {w for w in re.findall(r"\b[A-Z][a-zA-Z]+\b", text)}
         terms.update(detected_names or [])
         return ReferenceExtraction(summary=summary, candidate_terms=sorted(terms)[:10])
+
+    async def extract_glossary(
+        self,
+        raw_text: str,
+        output_text: str,
+        source_lang: SourceLang,
+        candidates: list[str] | None = None,
+        model: str | None = None,
+    ) -> list[GlossaryPair]:
+        """Deterministic, network-free pairing for offline dev and tests.
+
+        A real engine binds source terms to the translation's actual spellings. With no LLM
+        the mock can't translate, so it fabricates a stable, verifiable mapping: each source
+        candidate that actually occurs in ``raw_text`` is paired with the first English word
+        found in ``output_text``, cycling through the English words. The point is to exercise
+        the full pairing path (route → storage upsert → candidate rows), not to be correct.
+        """
+        src_terms = [c for c in (candidates or []) if c and c in raw_text]
+        english_words = re.findall(r"\b[A-Z][a-zA-Z]+\b", output_text)
+        pairs: list[GlossaryPair] = []
+        seen: set[str] = set()
+        for i, term in enumerate(src_terms):
+            if term in seen:
+                continue
+            seen.add(term)
+            surface = english_words[i % len(english_words)] if english_words else term
+            pairs.append(
+                GlossaryPair(source_term=term, surface_form=surface, category="term")
+            )
+        return pairs
 
     async def health(self) -> bool:
         return True

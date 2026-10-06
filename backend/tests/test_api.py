@@ -464,7 +464,6 @@ def test_experimental_endpoints_gated_off_by_default(tmp_path):
                         tid = payload["translation_id"]
         assert tid
         assert client.get(f"/api/translations/{tid}/source-terms").status_code == 404
-        assert client.get(f"/api/translations/{tid}/term-alignment").status_code == 404
         assert client.get(f"/api/translations/{tid}/pronoun-drift").status_code == 404
 
 
@@ -534,19 +533,19 @@ def test_source_terms_endpoint_when_enabled(tmp_path):
         assert c.get("/api/translations/does-not-exist/source-terms").status_code == 404
 
 
-def test_term_alignment_endpoint_when_enabled(tmp_path):
-    """With NB_SOURCE_TERMS on, /term-alignment returns a proposal list (empty if the
-    source-term model is absent). Gating + shape only; the alignment logic is unit-tested
-    offline in test_term_align.py (this path depends on the zh spaCy model being installed)."""
+def test_extract_glossary_endpoint(tmp_path):
+    """POST /translations/{tid}/extract-glossary runs the LLM-paired glossary extraction.
+
+    Uses the mock engine, which fabricates a stable verifiable mapping. Exercises the full
+    route → engine → response path. Always available (not gated by NB_SOURCE_TERMS; the
+    deterministic pre-filter enhances but is not required).
+    """
     settings = Settings(
         nb_engine="mock",
-        nb_db_path=str(tmp_path / "align.db"),
-        nb_source_terms=True,
+        nb_db_path=str(tmp_path / "glossary_extract.db"),
     )
     with _client_with(settings) as c:
         pid = c.post("/api/projects", json={"name": "S", "source_lang": "zh"}).json()["id"]
-        # An unpaired English glossary name to align against.
-        c.post(f"/api/projects/{pid}/glossary", json={"surface_form": "Lin Feng"})
         with c.stream(
             "POST",
             f"/api/projects/{pid}/translate",
@@ -559,7 +558,14 @@ def test_term_alignment_endpoint_when_enabled(tmp_path):
                     if payload.get("done"):
                         tid = payload["translation_id"]
         assert tid
-        r = c.get(f"/api/translations/{tid}/term-alignment")
+        r = c.post(f"/api/translations/{tid}/extract-glossary")
         assert r.status_code == 200
-        assert isinstance(r.json(), list)
-        assert c.get("/api/translations/does-not-exist/term-alignment").status_code == 404
+        pairs = r.json()
+        assert isinstance(pairs, list)
+        # The mock fabricates pairs from candidate source terms found in raw_text.
+        # Shape: each pair has at least source_term and surface_form.
+        for p in pairs:
+            assert "source_term" in p
+            assert "surface_form" in p
+        # Missing translation -> 404.
+        assert c.post("/api/translations/does-not-exist/extract-glossary").status_code == 404

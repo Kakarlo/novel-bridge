@@ -11,7 +11,7 @@ from app.config import Settings
 from app.engines.base import TranslationRequest
 from app.engines.factory import EngineConfigError, get_engine
 from app.engines.mock_engine import MockEngine
-from app.engines.ollama_engine import OllamaEngine
+from app.engines.ollama_engine import OllamaEngine, _parse_glossary_pairs
 from app.models import GlossaryEntry
 
 
@@ -110,6 +110,77 @@ async def test_mock_engine_extract_reference_deterministic():
 
 async def test_mock_engine_list_models():
     assert await MockEngine().list_models() == ["mock"]
+
+
+async def test_mock_engine_extract_glossary():
+    """Mock extract_glossary pairs candidate source terms to English words in the output."""
+    engine = MockEngine()
+    raw = "林尘走进大厅。苏青点头。林尘微笑。"
+    output = "Lin Chen walked in. Su Qing nodded. Lin Chen smiled."
+    pairs = await engine.extract_glossary(
+        raw, output, "zh", candidates=["林尘", "苏青"]
+    )
+    assert len(pairs) == 2
+    # Each pair has a source_term from the candidates and a surface_form from the output.
+    assert all(p.source_term for p in pairs)
+    assert all(p.surface_form for p in pairs)
+    # Deterministic: same inputs → same outputs.
+    pairs2 = await engine.extract_glossary(raw, output, "zh", candidates=["林尘", "苏青"])
+    assert [(p.source_term, p.surface_form) for p in pairs] == \
+           [(p.source_term, p.surface_form) for p in pairs2]
+
+
+async def test_mock_engine_extract_glossary_no_candidates():
+    """With no candidates, mock returns empty (nothing to pair)."""
+    engine = MockEngine()
+    assert await engine.extract_glossary("text", "Text output", "zh") == []
+
+
+def test_parse_glossary_pairs_valid():
+    raw = (
+        '{"pairs": [{"source_term": "林尘", "surface_form": "Lin Chen", '
+        '"category": "character", "gender": "male", "note": "protagonist"}]}'
+    )
+    pairs = _parse_glossary_pairs(raw)
+    assert len(pairs) == 1
+    p = pairs[0]
+    assert p.source_term == "林尘"
+    assert p.surface_form == "Lin Chen"
+    assert p.category == "character"
+    assert p.gender == "male"
+    assert p.note == "protagonist"
+
+
+def test_parse_glossary_pairs_embedded_json_and_defaults():
+    # JSON embedded in prose; missing/invalid category+gender default sanely.
+    raw = (
+        'Here you go:\n{"pairs": [{"source_term": "苏青", "surface_form": "Su Qing", '
+        '"category": "bogus", "gender": "unknown"}]}\nDone.'
+    )
+    pairs = _parse_glossary_pairs(raw)
+    assert len(pairs) == 1
+    assert pairs[0].category == "term"  # invalid category falls back
+    assert pairs[0].gender is None  # "unknown" normalized to None
+
+
+def test_parse_glossary_pairs_drops_incomplete_and_dedupes():
+    raw = (
+        '{"pairs": ['
+        '{"source_term": "", "surface_form": "X"},'          # no source_term -> dropped
+        '{"source_term": "A", "surface_form": ""},'          # no surface_form -> dropped
+        '{"source_term": "林", "surface_form": "Lin"},'
+        '{"source_term": "林", "surface_form": "lin"}'        # dup (case-insensitive) -> dropped
+        ']}'
+    )
+    pairs = _parse_glossary_pairs(raw)
+    assert len(pairs) == 1
+    assert pairs[0].source_term == "林"
+
+
+def test_parse_glossary_pairs_garbage_returns_empty():
+    assert _parse_glossary_pairs("not json at all") == []
+    assert _parse_glossary_pairs("") == []
+    assert _parse_glossary_pairs('{"wrong_key": []}') == []
 
 
 async def test_ollama_list_models_parses_tags():

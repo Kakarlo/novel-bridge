@@ -1,24 +1,26 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Check, ChevronRight, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
-import type { AlignmentCandidate } from "@/api/types";
+import type { GlossaryPairSuggestion } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 /**
- * Lightweight review surface for a SAVED translation (FRONTEND_TODO #1 + #3). Two
- * experimental, opt-in groups that both derive from the translation's source chapter:
+ * Lightweight review surface for a SAVED translation (FRONTEND_TODO #1 + #3). Two groups
+ * that both derive from the translation's source chapter:
  *
- *   • Source-language terms — zh/ja proper nouns from the source text; copy a term to pair
- *     it with an English name in the Glossary tab.
- *   • Suggested source↔English pairs — deterministic pairing guesses; "confirm" writes the
- *     pair to the glossary (upsert on surface_form), "dismiss" just hides the row.
+ *   • Source-language terms — zh/ja proper nouns from the source text (EXPERIMENTAL, gated by
+ *     NB_SOURCE_TERMS). Copy a term to pair it with an English name in the Glossary tab.
+ *   • Suggested source↔English pairs — LLM-paired suggestions binding each source term to the
+ *     exact English spelling the translation actually used (replaces the old deterministic
+ *     aligner, which produced unreliable pairs). This is an on-demand LLM call, so it runs
+ *     only when the user clicks "Suggest pairs" — never automatically. "Confirm" writes the
+ *     pair to the glossary (upsert on surface_form, defaults to approved); "dismiss" hides it.
  *
- * Both endpoints are gated by NB_SOURCE_TERMS on the backend: a 404 means the feature is
- * off and a `[]` means the model is unavailable — either way we render nothing, never crash.
+ * Source terms degrade silently (404 feature off / [] model unavailable → render nothing).
  * This only makes sense for a persisted translation (it has a source chapter on the server),
  * so the caller mounts it only when a translation_id exists — never during a live stream.
  */
@@ -32,37 +34,58 @@ export function TranslationReview({
   onGlossaryChanged?: () => void;
 }) {
   const [sourceTerms, setSourceTerms] = useState<string[]>([]);
-  const [alignments, setAlignments] = useState<AlignmentCandidate[]>([]);
+  const [pairs, setPairs] = useState<GlossaryPairSuggestion[]>([]);
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState(false);
   // Rows the user has resolved (confirmed or dismissed) this view — hide them locally.
   const [resolved, setResolved] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
     setResolved(new Set());
-    // 404 (feature off / missing) and [] (model unavailable) both degrade to "render
-    // nothing" — swallow the error and leave the list empty.
+    setPairs([]);
+    setExtracted(false);
+    // Source terms are cheap + deterministic, so fetch on mount. 404 (feature off) and []
+    // (model unavailable) both degrade to "render nothing" — swallow and leave empty.
     api
       .translationSourceTerms(translationId)
       .then((terms) => active && setSourceTerms(terms))
       .catch(() => active && setSourceTerms([]));
-    api
-      .translationTermAlignment(translationId)
-      .then((cands) => active && setAlignments(cands))
-      .catch(() => active && setAlignments([]));
     return () => {
       active = false;
     };
   }, [translationId]);
 
-  const pairKey = (c: AlignmentCandidate) => `${c.source_term}→${c.surface_form}`;
-  const pairs = alignments.filter((c) => !resolved.has(pairKey(c)));
+  const pairKey = (c: GlossaryPairSuggestion) => `${c.source_term}→${c.surface_form}`;
+  const visiblePairs = pairs.filter((c) => !resolved.has(pairKey(c)));
 
-  async function confirmPair(c: AlignmentCandidate) {
+  async function suggestPairs() {
+    setExtracting(true);
+    try {
+      // On-demand LLM call: pairs source terms to the English spellings in the translation.
+      const result = await api.translationExtractGlossary(translationId);
+      setPairs(result);
+      setExtracted(true);
+      if (result.length === 0) toast.info("No new pairings found");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Could not extract glossary pairs");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function confirmPair(c: GlossaryPairSuggestion) {
     try {
       // Upsert on surface_form via the existing glossary write — no new endpoint. A paired
       // entry (source_term set) defaults to approved on the backend, so it steers the next
-      // translation immediately.
-      await api.createGlossary(projectId, { surface_form: c.surface_form, source_term: c.source_term });
+      // translation immediately. Carry the model's category/gender/note through.
+      await api.createGlossary(projectId, {
+        surface_form: c.surface_form,
+        source_term: c.source_term,
+        category: c.category,
+        gender: c.gender ?? undefined,
+        note: c.note ?? undefined,
+      });
       setResolved((prev) => new Set(prev).add(pairKey(c)));
       onGlossaryChanged?.();
       toast.success(`Paired “${c.source_term}” → “${c.surface_form}”`);
@@ -71,12 +94,9 @@ export function TranslationReview({
     }
   }
 
-  function dismissPair(c: AlignmentCandidate) {
+  function dismissPair(c: GlossaryPairSuggestion) {
     setResolved((prev) => new Set(prev).add(pairKey(c)));
   }
-
-  // Both groups empty (feature off, or nothing detected) — render nothing.
-  if (sourceTerms.length === 0 && pairs.length === 0) return null;
 
   // Cap the whole surface and scroll inside it, so the review never swallows the reading
   // pane even with both groups expanded; the groups themselves are collapsible to reclaim
@@ -85,17 +105,27 @@ export function TranslationReview({
     <section className="pane-scroll max-h-[40%] shrink-0 space-y-3 overflow-y-auto border-b bg-muted/20 px-6 py-4">
       <div className="flex items-center gap-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
         <Sparkles className="size-3.5" />
-        Review (experimental)
+        Review
+        <Button
+          size="xs"
+          variant="outline"
+          className="ml-auto normal-case"
+          onClick={suggestPairs}
+          disabled={extracting}
+        >
+          {extracting ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          {extracting ? "Extracting…" : extracted ? "Re-suggest pairs" : "Suggest pairs"}
+        </Button>
       </div>
 
-      {pairs.length > 0 && (
+      {visiblePairs.length > 0 && (
         <CollapsibleGroup
           title="Suggested source↔English pairs"
-          count={pairs.length}
-          hint="guesses from appearance order & frequency — confirm to add a glossary pairing, or dismiss"
+          count={visiblePairs.length}
+          hint="paired by the model from the source and its translation — confirm to add a glossary pairing, or dismiss"
         >
           <ul className="space-y-1.5">
-            {pairs.map((c) => (
+            {visiblePairs.map((c) => (
               <li
                 key={pairKey(c)}
                 className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-card px-2.5 py-1.5 text-sm"
@@ -103,10 +133,13 @@ export function TranslationReview({
                 <span className="font-medium">{c.source_term}</span>
                 <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="font-medium">{c.surface_form}</span>
-                <ConfidenceBadge value={c.confidence} />
-                <span className="text-[11px] text-muted-foreground">
-                  {c.source_count}×src · {c.english_count}×en
-                </span>
+                <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px] capitalize">
+                  {c.category}
+                </Badge>
+                {c.gender && c.gender !== "unknown" && (
+                  <span className="text-[11px] text-muted-foreground">{c.gender}</span>
+                )}
+                {c.note && <span className="truncate text-[11px] text-muted-foreground">{c.note}</span>}
                 <div className="ml-auto flex shrink-0 items-center gap-1">
                   <Button
                     size="icon-xs"
@@ -189,16 +222,5 @@ function CollapsibleGroup({
       </CollapsibleTrigger>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
-  );
-}
-
-// Confidence is a 0..1 guess from a small model — show it honestly as low/med/high rather
-// than a false-precision percentage.
-function ConfidenceBadge({ value }: { value: number }) {
-  const level = value >= 0.66 ? "high" : value >= 0.33 ? "med" : "low";
-  return (
-    <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px] capitalize">
-      {level}
-    </Badge>
   );
 }

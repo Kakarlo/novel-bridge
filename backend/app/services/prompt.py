@@ -223,3 +223,67 @@ def build_extraction_messages(
         {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
+
+
+# --- Glossary pairing prompts -----------------------------------------------
+
+GLOSSARY_PAIRING_SYSTEM_PROMPT = (
+    "You align terminology between a source-language novel chapter and its existing "
+    "English translation. You do NOT translate or re-translate anything.\n"
+    "\n"
+    "You are given the raw source chapter and the English translation that was already "
+    "produced from it. They tell the same story in the same order. Your job is to bind "
+    "each important recurring source term (character names, places, organizations, titles, "
+    "skills, key terminology) to the EXACT English spelling that already appears in the "
+    "translation. Never invent a new romanization or spelling — only use spellings that "
+    "are actually present in the English text.\n"
+    "\n"
+    "Return ONLY a single JSON object, no prose and no code fences, with exactly one key:\n"
+    '  "pairs": an array of up to 30 objects, each with:\n'
+    '     "source_term": the term as it appears in the source text (required),\n'
+    '     "surface_form": the exact English spelling used in the translation (required),\n'
+    '     "category": one of "character", "title", "term" (default "term"),\n'
+    '     "gender": one of "male", "female", "unknown" (characters only; else "unknown"),\n'
+    '     "note": a short optional disambiguator (e.g. "protagonist"), or an empty string.\n'
+    "\n"
+    "Only include a pair when you are confident the source term and the English spelling "
+    "refer to the same entity. Omit anything you cannot pair with a spelling present in the "
+    "translation. No duplicates. Output JSON only."
+)
+
+
+def build_glossary_pairing_system_prompt() -> str:
+    return GLOSSARY_PAIRING_SYSTEM_PROMPT
+
+
+def build_glossary_pairing_messages(
+    raw_text: str,
+    output_text: str,
+    source_lang: SourceLang,
+    candidates: list[str] | None = None,
+) -> list[dict[str, str]]:
+    """Return chat messages to pair source terms to the English spellings in a translation.
+
+    ``candidates`` are deterministic pre-filtered terms (source-language proper nouns from
+    the NER pass and/or English names) passed as hints so a weak local model focuses on real
+    recurring terms rather than scanning the whole text blind — this is the token-saving
+    hybrid (rule-based pre-filter + a small LLM pass). The model may still add pairs beyond
+    the hints, and is told these are hints, not a required echo.
+    """
+    lang = _lang_name(source_lang)
+    parts = [
+        f"The source chapter is {lang}; the translation is its English rendering. Pair the "
+        "source terms to the exact English spellings used in the translation, as instructed."
+    ]
+    if candidates:
+        parts.append(
+            "## Candidate terms (a deterministic pre-pass flagged these as likely recurring "
+            "terms — prioritize pairing them, but add any other clearly recurring entity you "
+            "find. These are hints, not a required list.)\n" + ", ".join(candidates)
+        )
+    parts.append(f"## Source chapter\n{_RAW_OPEN}\n{raw_text}\n{_RAW_CLOSE}")
+    parts.append("## English translation\n" + output_text)
+    return [
+        {"role": "system", "content": GLOSSARY_PAIRING_SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]

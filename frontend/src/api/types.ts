@@ -115,17 +115,18 @@ export interface TermMatch {
   snippets: string[];
 }
 
-// EXPERIMENTAL source↔English pairing proposal for a saved translation (FRONTEND_TODO #3,
-// gated by NB_SOURCE_TERMS on the backend). Deterministic — correlates appearance order +
-// frequency in the source chapter vs the English output, NOT string similarity. These are
-// guesses; present them as suggestions, not facts.
-export interface AlignmentCandidate {
+// LLM-paired glossary suggestion for a saved translation. Replaces the old deterministic
+// AlignmentCandidate (appearance-rank/frequency, which produced unreliable pairs). The
+// backend reads the source chapter AND its English translation and binds each source term to
+// the exact English spelling the translator actually used — see POST
+// /translations/{tid}/extract-glossary. These are suggestions: the UI adds a chosen pair to
+// the glossary as a `candidate` for the user to approve; nothing is written automatically.
+export interface GlossaryPairSuggestion {
   source_term: string;
   surface_form: string;
-  source_count: number;
-  english_count: number;
-  confidence: number; // 0..1
-  basis: string;
+  category: GlossaryCategory;
+  gender: Gender | null;
+  note: string | null;
 }
 
 export interface TranslateRequest {

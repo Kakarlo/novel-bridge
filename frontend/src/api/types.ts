@@ -8,6 +8,9 @@ export interface Project {
   name: string;
   source_lang: SourceLang | null;
   created_at: string;
+  // Per-project writing-style profile (task 3). Extracted from reference chapters or written
+  // by hand; injected into every translation prompt. null until the user sets one.
+  style_profile: string | null;
 }
 
 export interface ProjectCounts {

@@ -59,6 +59,9 @@ class _SlowConcurrencyEngine(TranslationEngine):
     async def extract_glossary(self, raw_text, output_text, source_lang, candidates=None, model=None):
         return []
 
+    async def extract_style(self, content, source_lang):
+        return ""
+
     async def health(self) -> bool:
         return True
 

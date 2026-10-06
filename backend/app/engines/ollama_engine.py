@@ -24,6 +24,7 @@ from app.models import SourceLang
 from app.services.prompt import (
     build_extraction_messages,
     build_glossary_pairing_messages,
+    build_style_extraction_messages,
     build_translation_messages,
 )
 
@@ -273,6 +274,35 @@ class OllamaEngine(TranslationEngine):
         raw = (data.get("message") or {}).get("content", "") or ""
         raw = _THINK_RE.sub("", raw).strip()
         return _parse_glossary_pairs(raw)
+
+    async def extract_style(
+        self,
+        content: str,
+        source_lang: SourceLang,
+    ) -> str:
+        """Extract a writing-style profile via a single non-streaming call.
+
+        Unlike reference extraction this returns free-form markdown prose (no JSON), so it's
+        used as-is in the translate prompt. Returns "" on any failure (degraded, never
+        raises) — the project simply has no style until a successful extraction.
+        """
+        payload = {
+            "model": self._model,
+            "messages": build_style_extraction_messages(content, source_lang),
+            "stream": False,
+            "think": self._think,
+            "options": {"num_ctx": self._num_ctx, "num_thread": self._num_thread},
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(f"{self._base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            return ""
+
+        raw = (data.get("message") or {}).get("content", "") or ""
+        return _THINK_RE.sub("", raw).strip()
 
     async def health(self) -> bool:
         try:

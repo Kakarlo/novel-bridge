@@ -16,6 +16,9 @@ class TranslationRequest:
     glossary: list[GlossaryEntry] = field(default_factory=list)
     reference_context: str = ""
     model: str | None = None
+    # Per-project writing-style profile (task 3). Injected into the translation prompt to
+    # anchor register/tone/terminology across the series. Empty when the project has none.
+    style_profile: str = ""
 
 
 @dataclass
@@ -120,6 +123,32 @@ class TranslationEngine(ABC):
 
         Offline-safe: return ``[]`` (never raise) when the backend is unreachable or the
         response can't be parsed, so a flaky model degrades to "no suggestions".
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def extract_style(
+        self,
+        content: str,
+        source_lang: SourceLang,
+    ) -> str:
+        """Analyze a reference chapter and extract a reusable writing-style profile.
+
+        Unlike the summary extraction (which distills plot/terms), this focuses purely on
+        HOW the text is written: register, sentence rhythm, vocabulary, dialogue conventions,
+        honorific handling, narrative perspective, and localization preferences. The result
+        is a compact prose guide that can be injected as-is into the translate system prompt
+        to anchor tone and style across an entire series.
+
+        Stored per-project (not per-reference) because each novel has one cohesive style.
+        Multiple references accumulate into a richer profile; the caller merges or replaces.
+
+        ``content`` is the full English text of a reference chapter (references are always
+        English translations). ``source_lang`` indicates the original language for CJK-aware
+        analysis (e.g. honorific handling, pronoun drift, naming conventions).
+
+        Returns a markdown-formatted style guide (target: 150–300 words). Empty string on
+        any failure (degraded, never raises).
         """
         raise NotImplementedError
 

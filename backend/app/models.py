@@ -34,6 +34,10 @@ class Project(BaseModel):
     name: str
     source_lang: SourceLang | None = None
     created_at: str
+    # Per-project writing-style profile extracted from reference chapters or written by hand.
+    # Injected into every translation prompt so register, rhythm, and terminology stay
+    # consistent across the whole series. None until the user extracts or writes a style.
+    style_profile: str | None = None
 
 
 class ReferenceChapter(BaseModel):
@@ -219,6 +223,19 @@ class ResolveTermBody(BaseModel):
     def term_not_blank(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Term must not be empty.")
+        return v.strip()
+
+
+class StyleProfileBody(BaseModel):
+    """Manual set/edit of a per-project writing-style profile."""
+
+    style_profile: str
+
+    @field_validator("style_profile")
+    @classmethod
+    def style_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Style profile must not be empty.")
         return v.strip()
 
 

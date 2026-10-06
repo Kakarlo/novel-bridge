@@ -73,8 +73,9 @@ class SQLiteStorage(StorageService):
         )
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO projects (id, name, source_lang, created_at) VALUES (?,?,?,?)",
-                (proj.id, proj.name, proj.source_lang, proj.created_at),
+                "INSERT INTO projects (id, name, source_lang, created_at, style_profile)"
+                " VALUES (?,?,?,?,?)",
+                (proj.id, proj.name, proj.source_lang, proj.created_at, proj.style_profile),
             )
         return proj
 
@@ -87,6 +88,18 @@ class SQLiteStorage(StorageService):
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM projects WHERE id=?", (pid,))
         return cur.rowcount > 0
+
+    def update_project_style(self, pid: str, style_profile: str | None) -> Project | None:
+        """Set or clear the project's style profile. Empty/whitespace clears it to NULL."""
+        cleaned = style_profile.strip() if style_profile and style_profile.strip() else None
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE projects SET style_profile=? WHERE id=?", (cleaned, pid)
+            )
+            if cur.rowcount == 0:
+                return None
+            row = conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
+        return Project(**dict(row)) if row else None
 
     # --- references ---
     @staticmethod

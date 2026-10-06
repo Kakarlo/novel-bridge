@@ -31,6 +31,12 @@ class StorageService(ABC):
     @abstractmethod
     def delete_project(self, pid: str) -> bool: ...
 
+    @abstractmethod
+    def update_project_style(self, pid: str, style_profile: str | None) -> Project | None:
+        """Set or clear the per-project style profile. Returns the updated project, or None
+        if the project doesn't exist."""
+        ...
+
     # --- references ---
     @abstractmethod
     def list_references(self, pid: str) -> list[ReferenceChapter]: ...

@@ -114,6 +114,7 @@ def translate(
         glossary=glossary,
         reference_context=built.reference_context,
         model=requested_model,
+        style_profile=project.style_profile or "",
     )
 
     sem = _get_semaphore(settings.nb_max_concurrent_translations)

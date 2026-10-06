@@ -1,10 +1,15 @@
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS projects (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  source_lang TEXT,
-  created_at  TEXT NOT NULL
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  source_lang   TEXT,
+  created_at    TEXT NOT NULL,
+  -- Per-project writing-style profile extracted from reference chapters or written by hand.
+  -- Injected into every translation prompt to anchor register, rhythm, and terminology
+  -- conventions across the whole series (the reference-summary pivot, task 3). NULL until
+  -- the user extracts or writes a style. See engine.extract_style().
+  style_profile TEXT
 );
 
 CREATE TABLE IF NOT EXISTS reference_chapters (

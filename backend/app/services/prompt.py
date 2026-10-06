@@ -128,6 +128,16 @@ def build_translation_messages(req: TranslationRequest) -> list[dict[str, str]]:
     lang = _lang_name(req.source_lang)
     parts: list[str] = []
 
+    # The per-project style profile goes first: it's a top-level instruction on HOW to
+    # write, so the model should read it before terminology and the raw chapter. It's a
+    # guide for tone/register, not text to reproduce (same stance as reference context).
+    style = req.style_profile.strip()
+    if style:
+        parts.append(
+            "## Writing style (follow these style instructions for the translation — this "
+            f"describes HOW to write, it is NOT text to translate or reproduce)\n{style}"
+        )
+
     # Only approved / paired entries steer the prompt (Phase 4). Rendered as up to two
     # blocks: authoritative pairs, and a category/gender-aware preferred-spellings list.
     parts.extend(_format_glossary_blocks(_prompt_glossary_entries(req)))
@@ -285,5 +295,55 @@ def build_glossary_pairing_messages(
     parts.append("## English translation\n" + output_text)
     return [
         {"role": "system", "content": GLOSSARY_PAIRING_SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]
+
+
+# --- Style extraction prompts ------------------------------------------------
+
+STYLE_EXTRACTION_SYSTEM_PROMPT = (
+    "You are a linguistic analyst and literary editor. You analyze a previously translated "
+    "novel chapter and extract a concise, reusable Writing Style Profile.\n"
+    "\n"
+    "Ignore the plot, characters, and events entirely. Instead, focus on HOW the text is "
+    "written:\n"
+    "\n"
+    "1. PROSE PATTERNS: sentence length and rhythm (short/punchy vs long/descriptive), "
+    "narrative pacing, paragraph structure.\n"
+    "2. VOCABULARY & REGISTER: archaic, formal, conversational, or mixed? How literary vs "
+    "modern is the word choice?\n"
+    "3. DIALOGUE TONE: how different characters speak (do elders use formal English? do "
+    "younger characters use modern slang?). Dialogue tag style.\n"
+    "4. NARRATIVE PERSPECTIVE: first person, third person limited, third person omniscient? "
+    "How close is the POV to the character's thoughts?\n"
+    "5. LOCALIZATION PREFERENCES: are honorifics left intact (e.g. '-san', 'Shixiong'), "
+    "capitalized literally ('Elder', 'Senior Brother'), or heavily localized? Are titles "
+    "and terms left in the source language or translated?\n"
+    "6. IMAGERY & DESCRIPTION: level of sensory detail, metaphor density, action scene pacing.\n"
+    "\n"
+    "Output a concise, structured markdown guide (150-300 words maximum) that another AI "
+    "translator can use as a system instruction to replicate this writing style exactly. "
+    "Write it as direct instructions ('Use ...', 'Maintain ...', 'Keep ...'), not as "
+    "observations ('The text uses ...'). No plot summary, no character names, no code fences."
+)
+
+
+def build_style_extraction_system_prompt() -> str:
+    return STYLE_EXTRACTION_SYSTEM_PROMPT
+
+
+def build_style_extraction_messages(
+    content: str,
+    source_lang: SourceLang,
+) -> list[dict[str, str]]:
+    """Return chat messages to extract a writing-style profile from a reference chapter."""
+    lang = _lang_name(source_lang)
+    parts = [
+        f"The reference chapter below is a {lang}-to-English translation. Analyze the "
+        "English prose style as instructed and output a Writing Style Profile.",
+        "## Reference chapter\n" + content,
+    ]
+    return [
+        {"role": "system", "content": STYLE_EXTRACTION_SYSTEM_PROMPT},
         {"role": "user", "content": "\n\n".join(parts)},
     ]

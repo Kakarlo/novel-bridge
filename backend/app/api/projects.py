@@ -18,6 +18,7 @@ from app.models import (
     ReferenceChapter,
     ReferenceCreate,
     ResolveTermBody,
+    StyleProfileBody,
     TermMatch,
     Translation,
 )
@@ -65,6 +66,76 @@ def get_project(pid: str, store: StorageService = Depends(get_storage)):
 def delete_project(pid: str, store: StorageService = Depends(get_storage)):
     if not store.delete_project(pid):
         raise HTTPException(404, "Project not found")
+
+
+# --- style profile (per-project, task 3) ---
+@router.post("/projects/{pid}/extract-style", response_model=Project)
+async def extract_project_style(
+    pid: str,
+    body: ReferenceCreate | None = None,
+    store: StorageService = Depends(get_storage),
+    engine: TranslationEngine = Depends(get_translation_engine),
+):
+    """Extract a writing-style profile from reference content and store it on the project.
+
+    The reference-summary pivot (task 3): references are human English translations, so their
+    real value is the TRANSLATION STYLE, not a plot summary. This runs a single LLM call that
+    characterizes the prose (register, rhythm, dialogue, honorific handling) and stores the
+    result on the project, where it's injected into every translation prompt.
+
+    Source of the sample text, in priority order:
+    1. ``body.content`` when provided (analyze a specific pasted chapter), else
+    2. the project's existing reference chapters concatenated (newest first, capped).
+
+    502 if the engine extraction fails or yields nothing; 404 if the project is missing or
+    has no references to analyze.
+    """
+    project = store.get_project(pid)
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    sample = (body.content.strip() if body and body.content else "")
+    if not sample:
+        refs = store.list_references(pid)
+        if not refs:
+            raise HTTPException(404, "No reference content to analyze")
+        # Concatenate reference bodies (newest upload first), capped so a weak local model
+        # isn't overwhelmed — a few chapters are plenty to characterize a style.
+        chunks = [r.content for r in reversed(refs)]
+        sample = "\n\n".join(chunks)[:20000]
+
+    lang = project.source_lang or "zh"
+    try:
+        style = await engine.extract_style(sample, lang)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Style extraction failed: {exc}") from exc
+    if not style.strip():
+        raise HTTPException(502, "Style extraction returned nothing")
+
+    updated = store.update_project_style(pid, style)
+    if not updated:
+        raise HTTPException(404, "Project not found")
+    return updated
+
+
+@router.put("/projects/{pid}/style", response_model=Project)
+def set_project_style(
+    pid: str, body: StyleProfileBody, store: StorageService = Depends(get_storage)
+):
+    """Manually set/edit the project's style profile (user-authored or hand-tuned)."""
+    updated = store.update_project_style(pid, body.style_profile)
+    if not updated:
+        raise HTTPException(404, "Project not found")
+    return updated
+
+
+@router.delete("/projects/{pid}/style", response_model=Project)
+def clear_project_style(pid: str, store: StorageService = Depends(get_storage)):
+    """Clear the project's style profile (back to no style)."""
+    updated = store.update_project_style(pid, None)
+    if not updated:
+        raise HTTPException(404, "Project not found")
+    return updated
 
 
 # --- references ---

@@ -79,6 +79,21 @@ export const api = {
   getProject: (id: string) => request<ProjectDetail>(`/projects/${id}`),
   deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
 
+  // --- per-project style profile (task 3) ---
+  // Extract a writing-style profile from reference content (LLM call). With no body, analyzes
+  // the project's existing references; pass { title, content } to analyze a specific chapter.
+  // Returns the updated Project (style_profile set). 502 on engine failure, 404 if no content.
+  extractProjectStyle: (id: string, body?: { title: string; content: string }) =>
+    request<Project>(`/projects/${id}/extract-style`, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  // Manually set/edit the style profile (user-authored). Returns the updated Project.
+  setProjectStyle: (id: string, style_profile: string) =>
+    request<Project>(`/projects/${id}/style`, { method: "PUT", body: JSON.stringify({ style_profile }) }),
+  // Clear the style profile. Returns the updated Project (style_profile null).
+  clearProjectStyle: (id: string) => request<Project>(`/projects/${id}/style`, { method: "DELETE" }),
+
   // --- references ---
   listReferences: (pid: string) => request<ReferenceChapter[]>(`/projects/${pid}/references`),
   addReference: (pid: string, body: ReferenceCreate) =>

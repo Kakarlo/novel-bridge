@@ -103,6 +103,30 @@ class MockEngine(TranslationEngine):
             )
         return pairs
 
+    async def extract_style(
+        self,
+        content: str,
+        source_lang: SourceLang,
+    ) -> str:
+        """Deterministic, network-free style profile for offline dev and tests.
+
+        A real engine analyzes the prose; the mock can't, so it emits a stable marker guide
+        derived from trivial measurements (word count, avg sentence length) so the full
+        extract-style path can be exercised deterministically.
+        """
+        text = content.strip()
+        words = text.split()
+        sentences = [s for s in re.split(r"[.!?。！？]+", text) if s.strip()]
+        avg_len = (len(words) / len(sentences)) if sentences else 0
+        return (
+            "[MOCK-STYLE]\n"
+            f"- Source language: {source_lang}\n"
+            f"- Approx. {len(words)} words, {len(sentences)} sentences "
+            f"(avg {avg_len:.1f} words/sentence).\n"
+            "- Use a neutral, consistent register.\n"
+            "- Keep honorifics and titles consistent with the glossary."
+        )
+
     async def health(self) -> bool:
         return True
 

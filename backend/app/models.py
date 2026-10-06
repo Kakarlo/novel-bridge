@@ -221,6 +221,33 @@ class ResolveTermBody(BaseModel):
         return v.strip()
 
 
+class ModelSelection(BaseModel):
+    """Per-request engine override, modeled as a ``{provider, model}`` pair.
+
+    Why a pair and not a bare ``model`` string: the project is heading toward multiple
+    providers (local Ollama today; Gemini/OpenRouter next — see tech.md "Bring-your-own
+    LLM API token"). Picking a model is only unambiguous WITHIN a provider, so the override
+    is a pair from day one. Today ``provider`` is effectively fixed to the configured engine,
+    but accepting the field now means adding a cloud provider later is a pure data change —
+    no SSE-contract break for the frontend picker (already modeled provider → model).
+
+    Both fields are optional:
+    - ``provider`` omitted  → use the server's configured engine (``NB_ENGINE``).
+    - ``model`` omitted      → use that provider's configured default (e.g. ``OLLAMA_MODEL``).
+    """
+
+    provider: str | None = None
+    model: str | None = None
+
+    @field_validator("provider", "model")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
 class TranslateRequest(BaseModel):
     raw_text: str = Field(min_length=1)
     source_lang: SourceLang
@@ -228,6 +255,11 @@ class TranslateRequest(BaseModel):
     # carries `matches` (glossary terms found in the output) for the approve/reject loop.
     # Defaults false so the streaming path is untouched unless the user turned review on.
     review_terms: bool = False
+    # Optional per-request engine override (provider-aware model picker). Omitted entirely
+    # by existing clients → the server falls back to its configured engine + default model,
+    # so this is fully backward-compatible. The engine already honors a per-request model
+    # via TranslationRequest.model; see api/translate.py for how `selection` is resolved.
+    selection: ModelSelection | None = None
 
     @field_validator("raw_text")
     @classmethod

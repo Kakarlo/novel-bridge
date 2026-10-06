@@ -133,6 +133,12 @@ export interface TranslateRequest {
   source_lang: SourceLang;
   // Opt-in in-context term review. When true, the done event carries `matches`.
   review_terms?: boolean;
+  // Optional per-request engine override (provider-aware model picker). Omit entirely to use
+  // the server's configured engine + default model (backward-compatible). Both fields inside
+  // are optional server-side: provider omitted → configured engine, model omitted → that
+  // provider's default. Today provider is fixed to the local engine; sending a mismatching
+  // provider yields a 400.
+  selection?: Partial<ModelSelection>;
 }
 
 // GET /api/models — the current single-provider (local Ollama) contract. `models` is empty

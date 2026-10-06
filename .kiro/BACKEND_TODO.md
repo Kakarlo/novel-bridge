@@ -34,11 +34,31 @@ here so the override endpoint and the eventual volume support don't get designed
 
 ---
 
-## 2. Per-request model override on the translate endpoint (FRONTEND_TODO #5.3 / #5a)
+## 2. Per-request model override on the translate endpoint (FRONTEND_TODO #5.3 / #5a) — DONE
+
+**Shipped as a provider-aware `{provider, model}` pair** (not a bare `model`), per the
+provider-aware target below. The translate request body (`POST /api/projects/{id}/translate`)
+now accepts an optional `selection: { provider?: string, model?: string }`:
+
+- `model` is passed into `TranslationRequest.model` (engine already honors it).
+- `provider` is validated against the configured engine (`engine.name`); a mismatch returns
+  **400** (single provider today — the engine is a cached singleton). Becomes a provider→engine
+  lookup once cloud engines land (task 4).
+- Fully backward-compatible: omit `selection` entirely → configured engine + `OLLAMA_MODEL`.
+- Auto-saved `model_used` prefers the requested model when provided, else the engine default
+  (and is overwritten by the engine's `done` meta when present).
+- Frontend `TranslateRequest.selection?: Partial<ModelSelection>` added to `types.ts` to match.
+
+Models touched: `models.py` (`ModelSelection`, `TranslateRequest.selection`),
+`api/translate.py` (resolve + validate + pass through), `frontend/src/api/types.ts`.
+
+---
+
+### Original notes (for reference)
 
 **Why:** `GET /api/models` lists models and the engine already honors a per-request
 `TranslationRequest.model`, but the SSE translate REQUEST BODY has no `model` field, so the
-model picker can only *display* the current model, not switch it per translation.
+model picker can only _display_ the current model, not switch it per translation.
 
 **What the frontend needs:**
 

@@ -92,11 +92,28 @@ def translate(
         built.truncated,
     )
 
+    # Resolve the per-request engine override (provider-aware {provider, model} pair).
+    # Single-provider today: the engine is a process-wide cached singleton (deps.py), so a
+    # request may only name the provider that is actually configured. We validate the
+    # provider up front and 400 on a mismatch rather than silently translating with the
+    # wrong one — once cloud engines land this becomes a provider→engine lookup instead.
+    # `model` is a true per-call argument the engine honors via TranslationRequest.model,
+    # so the override's model half works now with no engine change.
+    requested_provider = body.selection.provider if body.selection else None
+    requested_model = body.selection.model if body.selection else None
+    if requested_provider and requested_provider.strip().lower() != engine.name:
+        raise HTTPException(
+            400,
+            f"Provider '{requested_provider}' is not available; this server is "
+            f"configured for '{engine.name}'.",
+        )
+
     req = TranslationRequest(
         raw_text=body.raw_text,
         source_lang=body.source_lang,
         glossary=glossary,
         reference_context=built.reference_context,
+        model=requested_model,
     )
 
     sem = _get_semaphore(settings.nb_max_concurrent_translations)
@@ -104,7 +121,11 @@ def translate(
 
     async def event_stream() -> AsyncIterator[str]:
         collected: list[str] = []
-        model_used = settings.ollama_model if engine.name == "ollama" else engine.name
+        # Best pre-stream guess at the model name for auto-save: an explicit per-request
+        # override wins, else the engine's configured default. The engine's `done` chunk may
+        # overwrite this below with the model it actually used (authoritative).
+        default_model = settings.ollama_model if engine.name == "ollama" else engine.name
+        model_used = requested_model or default_model
 
         # Cap simultaneous in-flight translations. If a slot isn't free, queue by
         # awaiting the semaphore, but give up after `timeout` so the client isn't

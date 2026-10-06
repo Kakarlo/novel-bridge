@@ -123,9 +123,14 @@ def translate(
     async def event_stream() -> AsyncIterator[str]:
         collected: list[str] = []
         # Best pre-stream guess at the model name for auto-save: an explicit per-request
-        # override wins, else the engine's configured default. The engine's `done` chunk may
-        # overwrite this below with the model it actually used (authoritative).
-        default_model = settings.ollama_model if engine.name == "ollama" else engine.name
+        # override wins, else the engine's configured default (per-engine). The engine's
+        # `done` chunk may overwrite this below with the model it actually used (authoritative).
+        _defaults = {
+            "ollama": settings.ollama_model,
+            "openrouter": settings.openrouter_model,
+            "gemini": settings.gemini_model,
+        }
+        default_model = _defaults.get(engine.name, engine.name)
         model_used = requested_model or default_model
 
         # Cap simultaneous in-flight translations. If a slot isn't free, queue by

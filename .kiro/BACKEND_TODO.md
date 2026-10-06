@@ -6,6 +6,32 @@ Keep the HTTP contract backward-compatible where possible.
 
 ---
 
+## 0. Cloud engines: OpenRouter + Gemini (bring-your-own key) — DONE (backend)
+
+Two hosted engines now live behind the `TranslationEngine` interface:
+
+- `engines/openrouter_engine.py` — OpenAI-compatible gateway (200+ models). Streaming SSE
+  (`choices[].delta.content`), non-streaming helpers for extraction, `/models` listing.
+- `engines/gemini_engine.py` — Google's REST API (custom format: `contents`/`parts`,
+  `system_instruction`, `streamGenerateContent?alt=sse`). Includes `_to_gemini_messages` to
+  convert OpenAI-style messages. Both are heavily commented as templates for more providers.
+
+Select via `NB_ENGINE=openrouter|gemini` + the matching `*_API_KEY` (see `.env.example`).
+`factory.py` validates the key at startup (fail-fast). `/api/health` + `/api/models` now
+report the correct per-engine default model (`_default_model` in `main.py`), and `health()`
+pings the provider (validates key + reachability). Keys come from env today; a per-user
+credential store behind `StorageService` is the future track (do NOT build yet).
+
+**Still frontend-only (provider-aware picker):** `/api/models` is still the flat
+`{models, current}` single-provider shape. The multi-provider `{providers: [...]}` shape (per
+`tech.md`) is a frontend-driven follow-up — the translate `selection` body already accepts
+`{provider, model}`, and the backend validates `provider` against the active engine (400 on
+mismatch). When the picker goes multi-provider, `/api/models` grows the providers array.
+sessionStorage API-key handling (per the research) is a frontend concern — the backend reads
+keys from env for now.
+
+---
+
 ## 1. Manual chapter-number override on a reference (FRONTEND_TODO #2.3)
 
 **Why:** `ReferenceChapter.chapter_number` is parsed from the title at upload and is `null`

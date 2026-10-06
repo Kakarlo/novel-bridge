@@ -28,6 +28,32 @@ class Settings(BaseSettings):
     ollama_num_thread: int = 2
     ollama_think: bool = False
 
+    # --- Cloud engines (bring-your-own API key) ---------------------------------
+    # Hosted providers behind the same TranslationEngine interface. Each is optional and
+    # only usable when its API key is configured. Keys come from the environment here (the
+    # local-first default); a future per-user credential store goes behind StorageService —
+    # see tech.md "Bring-your-own LLM API token". NEVER log or echo key values.
+    #
+    # To set NB_ENGINE to a cloud provider, set the matching *_API_KEY. The *_MODEL is the
+    # default model for that provider (overridable per-request via the translate selection).
+
+    # OpenRouter (OpenAI-compatible gateway to 200+ models).
+    openrouter_api_key: str = ""
+    openrouter_model: str = "deepseek/deepseek-chat"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Optional attribution headers OpenRouter uses to identify the calling app (harmless if
+    # blank). Not secrets.
+    openrouter_referer: str = "http://localhost:5173"
+    openrouter_title: str = "NovelBridge"
+
+    # Google Gemini.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+
+    # Shared cloud request timeout (seconds).
+    cloud_timeout_seconds: float = 300.0
+
     # Concurrency
     # Caps simultaneous in-flight translations (PARALLEL requests). num_thread caps
     # CPU within a single request; this caps how many run at once.

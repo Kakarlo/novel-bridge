@@ -14,6 +14,22 @@ from app.engines.base import TranslationEngine
 from app.engines.factory import get_engine
 
 
+def _default_model(settings: Settings) -> str:
+    """Return the configured default model name for the active engine.
+
+    Used by /api/health and /api/models so the frontend shows the correct `current`
+    regardless of which engine is selected.
+    """
+    engine = (settings.nb_engine or "").strip().lower()
+    if engine == "openrouter":
+        return settings.openrouter_model
+    if engine == "gemini":
+        return settings.gemini_model
+    if engine == "mock":
+        return "mock"
+    return settings.ollama_model
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -52,8 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health(
         engine: TranslationEngine = Depends(get_translation_engine),
     ) -> dict:
-        # Probe the actual engine (e.g. ping Ollama) rather than echoing config,
-        # so a disconnected LLM server reports as unreachable. The frontend's
+        # Probe the actual engine (e.g. ping Ollama, validate API key) rather than
+        # echoing config, so a disconnected backend reports as unreachable. The frontend
         # status indicator keys off `reachable` for its dot.
         try:
             reachable = await engine.health()
@@ -63,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok" if reachable else "unreachable",
             "reachable": reachable,
             "engine": settings.nb_engine,
-            "model": settings.ollama_model,
+            "model": _default_model(settings),
         }
 
     @app.get("/api/models")
@@ -77,7 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             available = await engine.list_models()
         except Exception:  # noqa: BLE001 - never let the listing raise
             available = []
-        return {"models": available, "current": settings.ollama_model}
+        return {"models": available, "current": _default_model(settings)}
 
     app.include_router(projects.router)
     app.include_router(translate.router)

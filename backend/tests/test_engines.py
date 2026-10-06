@@ -278,3 +278,88 @@ def test_factory_rejects_missing_ollama_config():
     s = Settings(nb_engine="ollama", ollama_base_url="", ollama_model="m")
     with pytest.raises(EngineConfigError):
         get_engine(s)
+
+
+# ---------------------------------------------------------------------------
+# Cloud engines: OpenRouter + Gemini (factory wiring, config validation, offline
+# degradation, and Gemini's message-format conversion). No network — the HTTP paths
+# are not exercised here; health/list_models degrade to False/[] without a key.
+# ---------------------------------------------------------------------------
+
+from app.engines.gemini_engine import GeminiEngine, _to_gemini_messages
+from app.engines.openrouter_engine import OpenRouterEngine
+
+
+def test_factory_selects_openrouter():
+    s = Settings(nb_engine="openrouter", openrouter_api_key="sk-test")
+    engine = get_engine(s)
+    assert isinstance(engine, OpenRouterEngine)
+    assert engine.name == "openrouter"
+
+
+def test_factory_rejects_openrouter_without_key():
+    s = Settings(nb_engine="openrouter", openrouter_api_key="")
+    with pytest.raises(EngineConfigError):
+        get_engine(s)
+
+
+def test_factory_selects_gemini():
+    s = Settings(nb_engine="gemini", gemini_api_key="g-test")
+    engine = get_engine(s)
+    assert isinstance(engine, GeminiEngine)
+    assert engine.name == "gemini"
+
+
+def test_factory_rejects_gemini_without_key():
+    s = Settings(nb_engine="gemini", gemini_api_key="")
+    with pytest.raises(EngineConfigError):
+        get_engine(s)
+
+
+async def test_cloud_engines_degrade_without_key():
+    # health() is False and list_models() is [] when no key is set — never raises.
+    for engine in (OpenRouterEngine(api_key=""), GeminiEngine(api_key="")):
+        assert await engine.health() is False
+        assert await engine.list_models() == []
+
+
+def test_gemini_message_conversion_system_and_roles():
+    # "system" → system_instruction; "assistant" → "model"; "user" stays "user".
+    messages = [
+        {"role": "system", "content": "You translate."},
+        {"role": "user", "content": "Translate this."},
+        {"role": "assistant", "content": "Prior output."},
+    ]
+    sys_inst, contents = _to_gemini_messages(messages)
+    assert sys_inst == {"parts": [{"text": "You translate."}]}
+    assert contents[0] == {"role": "user", "parts": [{"text": "Translate this."}]}
+    assert contents[1] == {"role": "model", "parts": [{"text": "Prior output."}]}
+
+
+def test_gemini_message_conversion_merges_consecutive_same_role():
+    # Gemini rejects consecutive same-role messages; they must be merged into one.
+    messages = [
+        {"role": "user", "content": "A"},
+        {"role": "user", "content": "B"},
+    ]
+    sys_inst, contents = _to_gemini_messages(messages)
+    assert sys_inst is None
+    assert len(contents) == 1
+    assert contents[0]["parts"] == [{"text": "A"}, {"text": "B"}]
+
+
+def test_gemini_extract_text():
+    obj = {"candidates": [{"content": {"parts": [{"text": "Hello "}, {"text": "world"}]}}]}
+    assert GeminiEngine._extract_text(obj) == "Hello world"
+    assert GeminiEngine._extract_text({"candidates": []}) == ""
+    assert GeminiEngine._extract_text({}) == ""
+
+
+def test_default_model_per_engine():
+    # /api/health + /api/models report the right `current` per engine.
+    from app.main import _default_model
+
+    assert _default_model(Settings(nb_engine="ollama", ollama_model="qwen3.5:4b")) == "qwen3.5:4b"
+    assert _default_model(Settings(nb_engine="openrouter", openrouter_model="x/y")) == "x/y"
+    assert _default_model(Settings(nb_engine="gemini", gemini_model="gemini-2.0-flash")) == "gemini-2.0-flash"
+    assert _default_model(Settings(nb_engine="mock")) == "mock"

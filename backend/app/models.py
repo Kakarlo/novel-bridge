@@ -239,9 +239,14 @@ class StyleExtractBody(BaseModel):
 
     ``content`` lets the caller analyze a specific pasted chapter; when omitted (or no body
     at all), the route falls back to the project's newest reference chapter.
+
+    ``selection`` carries the optional per-request engine override ({provider, model}),
+    same shape as the translate body, so a BYO-key user can run style extraction on their
+    own provider. The API key rides on the X-LLM-Api-Key header, never in this body.
     """
 
     content: str | None = None
+    selection: "ModelSelection | None" = None
 
     @field_validator("content")
     @classmethod
@@ -298,3 +303,8 @@ class TranslateRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Raw text must not be empty.")
         return v
+
+
+# StyleExtractBody references ModelSelection via a forward ref (ModelSelection is defined
+# later in this module); resolve it now that both classes exist.
+StyleExtractBody.model_rebuild()

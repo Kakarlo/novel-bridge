@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.config import Settings, get_settings
-from app.deps import get_storage, get_translation_engine
+from app.deps import get_request_api_key, get_storage, get_translation_engine, resolve_request_engine
 from app.engines.base import TranslationEngine, TranslationRequest
 from app.models import TranslateRequest
 from app.services import context_builder as cb
@@ -54,12 +54,28 @@ def translate(
     pid: str,
     body: TranslateRequest,
     store: StorageService = Depends(get_storage),
-    engine: TranslationEngine = Depends(get_translation_engine),
+    fallback_engine: TranslationEngine = Depends(get_translation_engine),
     settings: Settings = Depends(get_settings),
+    api_key: str | None = Depends(get_request_api_key),
 ):
     project = store.get_project(pid)
     if not project:
         raise HTTPException(404, "Project not found")
+
+    # --- Per-request engine resolution (BYO-key multi-user path) ----------------
+    # Provider/model come from the body selection (already modeled as {provider, model}).
+    # The API key comes from the X-LLM-Api-Key header (never in the body).
+    # resolve_request_engine handles validation (400 unknown provider, 401 missing key)
+    # and falls back to the env-configured/test-injected engine when no creds are supplied.
+    requested_provider = body.selection.provider if body.selection else None
+    requested_model = body.selection.model if body.selection else None
+    engine = resolve_request_engine(
+        provider=requested_provider,
+        model=requested_model,
+        api_key=api_key,
+        settings=settings,
+        fallback=fallback_engine,
+    )
 
     glossary = store.list_glossary(pid)
     references = store.list_references(pid)
@@ -91,22 +107,6 @@ def translate(
         len(body.raw_text),
         built.truncated,
     )
-
-    # Resolve the per-request engine override (provider-aware {provider, model} pair).
-    # Single-provider today: the engine is a process-wide cached singleton (deps.py), so a
-    # request may only name the provider that is actually configured. We validate the
-    # provider up front and 400 on a mismatch rather than silently translating with the
-    # wrong one — once cloud engines land this becomes a provider→engine lookup instead.
-    # `model` is a true per-call argument the engine honors via TranslationRequest.model,
-    # so the override's model half works now with no engine change.
-    requested_provider = body.selection.provider if body.selection else None
-    requested_model = body.selection.model if body.selection else None
-    if requested_provider and requested_provider.strip().lower() != engine.name:
-        raise HTTPException(
-            400,
-            f"Provider '{requested_provider}' is not available; this server is "
-            f"configured for '{engine.name}'.",
-        )
 
     req = TranslationRequest(
         raw_text=body.raw_text,

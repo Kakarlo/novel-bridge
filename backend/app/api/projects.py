@@ -5,7 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.config import Settings, get_settings
-from app.deps import get_storage, get_translation_engine
+from app.deps import (
+    get_request_api_key,
+    get_storage,
+    get_translation_engine,
+    resolve_request_engine,
+)
 from app.engines.base import TranslationEngine
 from app.models import (
     GlossaryCreate,
@@ -75,7 +80,9 @@ async def extract_project_style(
     pid: str,
     body: StyleExtractBody | None = None,
     store: StorageService = Depends(get_storage),
-    engine: TranslationEngine = Depends(get_translation_engine),
+    fallback_engine: TranslationEngine = Depends(get_translation_engine),
+    settings: Settings = Depends(get_settings),
+    api_key: str | None = Depends(get_request_api_key),
 ):
     """Extract a writing-style profile from reference content and store it on the project.
 
@@ -99,6 +106,17 @@ async def extract_project_style(
     project = store.get_project(pid)
     if not project:
         raise HTTPException(404, "Project not found")
+
+    # Per-request engine resolution (BYO-key). selection.{provider, model} from the body,
+    # key from the X-LLM-Api-Key header; falls back to the env/injected engine otherwise.
+    sel = body.selection if body else None
+    engine = resolve_request_engine(
+        provider=sel.provider if sel else None,
+        model=sel.model if sel else None,
+        api_key=api_key,
+        settings=settings,
+        fallback=fallback_engine,
+    )
 
     sample = (body.content.strip() if body and body.content else "")
     if not sample:
@@ -349,9 +367,12 @@ def get_translation_source_terms(
 )
 async def extract_translation_glossary(
     tid: str,
+    provider: str | None = None,
+    model: str | None = None,
     store: StorageService = Depends(get_storage),
-    engine: TranslationEngine = Depends(get_translation_engine),
+    fallback_engine: TranslationEngine = Depends(get_translation_engine),
     settings: Settings = Depends(get_settings),
+    api_key: str | None = Depends(get_request_api_key),
 ):
     """LLM-paired glossary extraction from a saved translation.
 
@@ -373,6 +394,17 @@ async def extract_translation_glossary(
     if not tr:
         raise HTTPException(404, "Translation not found")
 
+    # Per-request engine resolution (BYO-key). provider/model come as query params here
+    # (this POST carries no body); key from the X-LLM-Api-Key header. Falls back to the
+    # env/injected engine when no creds are supplied.
+    engine = resolve_request_engine(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        settings=settings,
+        fallback=fallback_engine,
+    )
+
     # Build candidate hints from deterministic pre-filters.
     candidates: list[str] = []
     if settings.nb_source_terms:
@@ -384,6 +416,7 @@ async def extract_translation_glossary(
         output_text=tr.output_text,
         source_lang=tr.source_lang,
         candidates=candidates or None,
+        model=model,
     )
 
     return [

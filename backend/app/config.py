@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     openrouter_title: str = "NovelBridge"
 
     # Google Gemini.
+    # Use a specific model name (e.g. "gemini-3.5-flash") rather than aliases like
+    # "gemini-flash-latest" — aliases are prone to overload-503 since everyone hits them.
+    # Run GET /api/models to see what's available for your key.
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.5-flash"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     # Shared cloud request timeout (seconds).

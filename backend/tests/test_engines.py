@@ -361,5 +361,5 @@ def test_default_model_per_engine():
 
     assert _default_model(Settings(nb_engine="ollama", ollama_model="qwen3.5:4b")) == "qwen3.5:4b"
     assert _default_model(Settings(nb_engine="openrouter", openrouter_model="x/y")) == "x/y"
-    assert _default_model(Settings(nb_engine="gemini", gemini_model="gemini-2.0-flash")) == "gemini-2.0-flash"
+    assert _default_model(Settings(nb_engine="gemini", gemini_model="gemini-3.5-flash")) == "gemini-3.5-flash"
     assert _default_model(Settings(nb_engine="mock")) == "mock"

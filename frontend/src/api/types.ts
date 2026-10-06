@@ -33,12 +33,13 @@ export interface ReferenceChapter {
   // Parsed from the title at upload (backend services/chapter_number.py). null when the
   // title has no recognizable number — the list falls back to upload order for those.
   chapter_number: number | null;
-  // Derived at upload time by the engine (summary + candidate glossary terms).
-  // Both may be absent if extraction hasn't run yet (e.g. engine was offline).
+  // DEPRECATED (references-are-for-style pivot): the per-reference AI summary + candidate
+  // terms are no longer populated at upload — the project-level style profile replaced them.
+  // Kept on the type for back-compat; always null / [] on new references.
   summary: string | null;
   candidate_terms: string[];
-  // Rule-based proper-noun detections (field-fix #2), surfaced separately from the AI's
-  // candidate_terms so the user can judge rules-vs-AI picks.
+  // Rule-based proper-noun detections (offline spaCy NER). Still populated at upload and
+  // promotable to the glossary from the reference reader.
   detected_names: string[];
 }
 
@@ -80,9 +81,6 @@ export interface ProjectCreate {
 export interface ReferenceCreate {
   title: string;
   content: string;
-  // When false, skip the slow AI summary/candidate-term extraction and run only the
-  // offline name detector. Defaults true on the backend.
-  extract_summary?: boolean;
 }
 
 export interface GlossaryCreate {

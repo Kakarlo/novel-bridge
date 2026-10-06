@@ -76,23 +76,6 @@ def test_reference_crud_and_validation(client):
     assert client.delete(f"/api/references/{ref_id}").status_code == 204
 
 
-def test_add_reference_extracts_summary(client):
-    pid = _create_project(client)
-    r = client.post(
-        f"/api/projects/{pid}/references",
-        json={"title": "Ch1", "content": "Lin Feng climbed Azure Peak at dawn."},
-    )
-    assert r.status_code == 201
-    ref = r.json()
-    # The mock engine ran synchronously and populated derived context.
-    assert ref["summary"].startswith("[MOCK-SUMMARY]")
-    assert isinstance(ref["candidate_terms"], list)
-    assert "Lin" in ref["candidate_terms"]
-    # It is persisted and returned by the list endpoint too.
-    listed = client.get(f"/api/projects/{pid}/references").json()[0]
-    assert listed["summary"] == ref["summary"]
-
-
 def test_add_reference_detects_proper_nouns(client):
     pid = _create_project(client)
     r = client.post(
@@ -112,21 +95,6 @@ def test_add_reference_detects_proper_nouns(client):
     # (NER may return "Li Changshou" or "Changshou" depending on context — both are a hit.)
     assert any("Changshou" in n for n in ref["detected_names"])
     assert "Beijing" in ref["detected_names"]
-
-
-def test_resummarize_reference(client):
-    pid = _create_project(client)
-    ref_id = client.post(
-        f"/api/projects/{pid}/references",
-        json={"title": "Ch1", "content": "Dawn broke over the Jade City."},
-    ).json()["id"]
-
-    r = client.post(f"/api/references/{ref_id}/resummarize")
-    assert r.status_code == 200
-    assert r.json()["summary"].startswith("[MOCK-SUMMARY]")
-    assert "Jade" in r.json()["candidate_terms"]
-    # Unknown reference -> 404.
-    assert client.post("/api/references/nope/resummarize").status_code == 404
 
 
 def test_glossary_paired_create_and_update(client):
@@ -301,8 +269,55 @@ def test_delete_translation(client):
     assert client.delete(f"/api/translations/{tid}").status_code == 404
 
 
-def test_add_reference_names_only_skips_summary(client):
-    """extract_summary=False runs the name detector but skips the AI extraction."""
+def test_extract_style_from_references(client):
+    """POST /projects/{id}/extract-style analyzes the newest reference and stores a style
+    profile on the project (references-are-for-style pivot)."""
+    pid = _create_project(client)
+    client.post(
+        f"/api/projects/{pid}/references",
+        json={"title": "Ch1", "content": "Dawn broke. The swordsman walked the long road."},
+    )
+    r = client.post(f"/api/projects/{pid}/extract-style")
+    assert r.status_code == 200
+    proj = r.json()
+    assert proj["style_profile"]  # mock engine populated a style guide
+    assert "[MOCK-STYLE]" in proj["style_profile"]
+
+
+def test_extract_style_from_body_content(client):
+    """extract-style with a content body analyzes that specific text, no references needed."""
+    pid = _create_project(client)
+    r = client.post(
+        f"/api/projects/{pid}/extract-style",
+        json={"content": "A short punchy chapter. Dialogue was terse."},
+    )
+    assert r.status_code == 200
+    assert r.json()["style_profile"]
+
+
+def test_extract_style_no_content_404(client):
+    """No references and no body content -> 404 (nothing to analyze)."""
+    pid = _create_project(client)
+    assert client.post(f"/api/projects/{pid}/extract-style").status_code == 404
+
+
+def test_set_and_clear_style(client):
+    """PUT sets a manual style; DELETE clears it back to null."""
+    pid = _create_project(client)
+    r = client.put(
+        f"/api/projects/{pid}/style",
+        json={"style_profile": "Use a formal, archaic register."},
+    )
+    assert r.status_code == 200
+    assert r.json()["style_profile"] == "Use a formal, archaic register."
+    r = client.delete(f"/api/projects/{pid}/style")
+    assert r.status_code == 200
+    assert r.json()["style_profile"] is None
+
+
+def test_add_reference_lightweight_upload(client):
+    """References are for style (pivot): upload runs only the offline name detector,
+    no AI summary or candidate-term extraction. summary and candidate_terms are always null/[]."""
     pid = _create_project(client)
     r = client.post(
         f"/api/projects/{pid}/references",
@@ -312,15 +327,14 @@ def test_add_reference_names_only_skips_summary(client):
                 "Li Changshou bowed. Later, Li Changshou traveled to Beijing. "
                 "In Beijing, Li Changshou rested."
             ),
-            "extract_summary": False,
         },
     )
     assert r.status_code == 201
     ref = r.json()
-    # No AI summary / candidate terms (the mock engine was never called)...
+    # No AI summary / candidate terms — references are for style, not summaries.
     assert ref["summary"] is None
     assert ref["candidate_terms"] == []
-    # ...but the offline name detector still ran.
+    # The offline name detector still ran.
     assert "Beijing" in ref["detected_names"]
 
 
@@ -370,18 +384,14 @@ def test_reject_term_via_upsert_persists(client):
 def test_redetect_reference_names_only(client):
     """POST /references/{id}/redetect refreshes detected_names without touching summary."""
     pid = _create_project(client)
-    # Add with the AI summary so summary/candidate_terms are populated.
     ref = client.post(
         f"/api/projects/{pid}/references",
         json={"title": "Ch1", "content": "Lin Feng met Lin Feng's rival in Beijing."},
     ).json()
-    summary_before = ref["summary"]
-    assert summary_before  # mock engine populated it
     r = client.post(f"/api/references/{ref['id']}/redetect")
     assert r.status_code == 200
     body = r.json()
-    # Summary is untouched; detected_names recomputed by the offline detector.
-    assert body["summary"] == summary_before
+    # detected_names recomputed by the offline detector (no AI).
     assert isinstance(body["detected_names"], list)
     # Unknown reference -> 404.
     assert client.post("/api/references/nope/redetect").status_code == 404

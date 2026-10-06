@@ -155,11 +155,6 @@ class ProjectCreate(BaseModel):
 class ReferenceCreate(BaseModel):
     title: str
     content: str
-    # When False, skip the AI summary/candidate-term extraction and run ONLY the offline
-    # name detector (spaCy NER). Lets the user test the extractor in isolation and add a
-    # reference instantly without waiting on a slow local model. detected_names is always
-    # computed either way. Defaults True so existing behavior is unchanged.
-    extract_summary: bool = True
 
     @field_validator("title", "content")
     @classmethod
@@ -237,6 +232,24 @@ class StyleProfileBody(BaseModel):
         if not v or not v.strip():
             raise ValueError("Style profile must not be empty.")
         return v.strip()
+
+
+class StyleExtractBody(BaseModel):
+    """Optional body for POST /projects/{id}/extract-style.
+
+    ``content`` lets the caller analyze a specific pasted chapter; when omitted (or no body
+    at all), the route falls back to the project's newest reference chapter.
+    """
+
+    content: str | None = None
+
+    @field_validator("content")
+    @classmethod
+    def content_blank_to_none(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 class ModelSelection(BaseModel):

@@ -80,13 +80,13 @@ export const api = {
   deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
 
   // --- per-project style profile (task 3) ---
-  // Extract a writing-style profile from reference content (LLM call). With no body, analyzes
-  // the project's existing references; pass { title, content } to analyze a specific chapter.
+  // Extract a writing-style profile (LLM call). With no body, analyzes the project's newest
+  // reference chapter; pass { content } to analyze a specific pasted chapter instead.
   // Returns the updated Project (style_profile set). 502 on engine failure, 404 if no content.
-  extractProjectStyle: (id: string, body?: { title: string; content: string }) =>
+  extractProjectStyle: (id: string, content?: string) =>
     request<Project>(`/projects/${id}/extract-style`, {
       method: "POST",
-      body: body ? JSON.stringify(body) : undefined,
+      body: content ? JSON.stringify({ content }) : undefined,
     }),
   // Manually set/edit the style profile (user-authored). Returns the updated Project.
   setProjectStyle: (id: string, style_profile: string) =>
@@ -102,10 +102,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteReference: (refId: string) => request<void>(`/references/${refId}`, { method: "DELETE" }),
-  // Re-run summary + candidate-term extraction for one reference (e.g. after the
-  // engine was offline at upload). Returns the updated reference.
-  resummarizeReference: (refId: string) =>
-    request<ReferenceChapter>(`/references/${refId}/resummarize`, { method: "POST" }),
   // Re-run ONLY the offline name detector (no AI) to refresh detected_names quickly.
   redetectReferenceNames: (refId: string) =>
     request<ReferenceChapter>(`/references/${refId}/redetect`, { method: "POST" }),

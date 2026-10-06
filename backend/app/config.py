@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # OpenRouter (OpenAI-compatible gateway to 200+ models).
     openrouter_api_key: str = ""
-    openrouter_model: str = "deepseek/deepseek-chat"
+    openrouter_model: str = "openrouter/free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Optional attribution headers OpenRouter uses to identify the calling app (harmless if
     # blank). Not secrets.
@@ -47,11 +47,11 @@ class Settings(BaseSettings):
     openrouter_title: str = "NovelBridge"
 
     # Google Gemini.
-    # Use a specific model name (e.g. "gemini-3.5-flash") rather than aliases like
+    # Use a specific model name (e.g. "gemini-3.5-flash-lite") rather than aliases like
     # "gemini-flash-latest" — aliases are prone to overload-503 since everyone hits them.
     # Run GET /api/models to see what's available for your key.
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     # Shared cloud request timeout (seconds).

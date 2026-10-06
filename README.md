@@ -18,15 +18,15 @@ partway through a series. NovelBridge lets a reader keep going with consistent o
 - **Projects (series)** — create a series, pick its source language (Chinese or Japanese).
 - **Glossary** — authoritative name/term mappings; the model is instructed to follow them
   exactly. Re-adding a term upserts it rather than duplicating.
-- **References** — paste previously translated chapters. On upload the engine distills each into
-  a short **summary** and **candidate glossary terms**; translations use that derived context
-  (not the raw chapter text) so the model matches tone without echoing the reference. Re-run
-  extraction anytime via resummarize.
+- **References** — paste previously translated chapters. Upload is lightweight (stores the text
+  and runs an offline proper-noun detector). Their real value is the **writing style**: extract
+  a per-project **style profile** from a reference chapter (one LLM pass), which is injected into
+  every translation prompt so the voice, register, and conventions stay consistent across the
+  series. The style profile can also be written or edited by hand.
 - **Translate** — paste a raw chapter and watch the English stream in token-by-token over SSE.
   Translations auto-save on completion and are browsable from a history panel.
-- **Context budgeting** — the backend always includes the full glossary and raw chapter, then
-  fills the remaining token budget with reference **summaries** (newest-first), noting any
-  truncation.
+- **Engines** — local **Ollama** (default) or cloud **OpenRouter** / **Gemini** (bring your own
+  API key), all behind one `TranslationEngine` interface. Select via `NB_ENGINE`.
 
 ## Architecture
 
@@ -130,25 +130,29 @@ npm run build
 
 ## HTTP API
 
-| Method | Path                                  | Purpose                                  |
-| ------ | ------------------------------------- | ---------------------------------------- |
-| GET    | `/api/health`                         | Liveness + configured engine             |
-| GET    | `/api/projects`                       | List projects                            |
-| POST   | `/api/projects`                       | Create project                           |
-| GET    | `/api/projects/{id}`                  | Project detail with counts               |
-| DELETE | `/api/projects/{id}`                  | Delete project (cascade)                 |
-| GET    | `/api/projects/{id}/references`       | List references                          |
-| POST   | `/api/projects/{id}/references`       | Add reference (extracts summary + terms) |
-| POST   | `/api/references/{refId}/resummarize` | Re-run reference extraction              |
-| DELETE | `/api/references/{refId}`             | Delete reference                         |
-| GET    | `/api/projects/{id}/glossary`         | List glossary entries                    |
-| POST   | `/api/projects/{id}/glossary`         | Create entry (upserts duplicate term)    |
-| PUT    | `/api/glossary/{entryId}`             | Update entry                             |
-| DELETE | `/api/glossary/{entryId}`             | Delete entry                             |
-| POST   | `/api/projects/{id}/translate`        | SSE: stream a translation, then autosave |
-| GET    | `/api/projects/{id}/translations`     | List saved translations                  |
-| GET    | `/api/translations/{tid}`             | Get one saved translation                |
-| DELETE | `/api/translations/{tid}`             | Delete one saved translation             |
+| Method | Path                                       | Purpose                                  |
+| ------ | ------------------------------------------ | ---------------------------------------- |
+| GET    | `/api/health`                              | Liveness + configured engine             |
+| GET    | `/api/projects`                            | List projects                            |
+| POST   | `/api/projects`                            | Create project                           |
+| GET    | `/api/projects/{id}`                       | Project detail with counts               |
+| DELETE | `/api/projects/{id}`                       | Delete project (cascade)                 |
+| GET    | `/api/projects/{id}/references`            | List references                          |
+| POST   | `/api/projects/{id}/references`            | Add reference (lightweight; names only)  |
+| POST   | `/api/references/{refId}/redetect`         | Re-run the offline name detector         |
+| DELETE | `/api/references/{refId}`                  | Delete reference                         |
+| POST   | `/api/projects/{id}/extract-style`         | Extract a style profile (LLM)            |
+| PUT    | `/api/projects/{id}/style`                 | Set the style profile manually           |
+| DELETE | `/api/projects/{id}/style`                 | Clear the style profile                  |
+| GET    | `/api/projects/{id}/glossary`              | List glossary entries                    |
+| POST   | `/api/projects/{id}/glossary`              | Create entry (upserts duplicate term)    |
+| PUT    | `/api/glossary/{entryId}`                  | Update entry                             |
+| DELETE | `/api/glossary/{entryId}`                  | Delete entry                             |
+| POST   | `/api/translations/{tid}/extract-glossary` | LLM-paired source→English glossary       |
+| POST   | `/api/projects/{id}/translate`             | SSE: stream a translation, then autosave |
+| GET    | `/api/projects/{id}/translations`          | List saved translations                  |
+| GET    | `/api/translations/{tid}`                  | Get one saved translation                |
+| DELETE | `/api/translations/{tid}`                  | Delete one saved translation             |
 
 The translate endpoint returns `text/event-stream`: repeated `data: {"content":"..."}` chunks,
 an optional `data: {"info":"..."}` notice (reference truncation, or waiting for a free slot when

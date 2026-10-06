@@ -18,6 +18,7 @@ from app.models import (
     ReferenceChapter,
     ReferenceCreate,
     ResolveTermBody,
+    StyleExtractBody,
     StyleProfileBody,
     TermMatch,
     Translation,
@@ -72,20 +73,25 @@ def delete_project(pid: str, store: StorageService = Depends(get_storage)):
 @router.post("/projects/{pid}/extract-style", response_model=Project)
 async def extract_project_style(
     pid: str,
-    body: ReferenceCreate | None = None,
+    body: StyleExtractBody | None = None,
     store: StorageService = Depends(get_storage),
     engine: TranslationEngine = Depends(get_translation_engine),
 ):
     """Extract a writing-style profile from reference content and store it on the project.
 
-    The reference-summary pivot (task 3): references are human English translations, so their
-    real value is the TRANSLATION STYLE, not a plot summary. This runs a single LLM call that
-    characterizes the prose (register, rhythm, dialogue, honorific handling) and stores the
-    result on the project, where it's injected into every translation prompt.
+    References are human English translations — their real value is the TRANSLATION STYLE.
+    This is the primary AI pass on references, replacing the old per-reference summary +
+    candidate-terms pass. Runs a single LLM call that characterizes the prose (register,
+    rhythm, dialogue, honorific handling) and stores the result on the project, where it's
+    injected into every translation prompt.
 
-    Source of the sample text, in priority order:
-    1. ``body.content`` when provided (analyze a specific pasted chapter), else
-    2. the project's existing reference chapters concatenated (newest first, capped).
+    Source of the sample text:
+    - ``body.content`` when provided (analyze a specific pasted chapter), else
+    - the project's NEWEST reference chapter (by chapter_number, then upload order).
+
+    Using one chapter keeps the context small and reliable for weak local models. The user
+    picks which chapter to extract from (default: most recent). A multi-chapter merge
+    strategy is a future follow-up.
 
     502 if the engine extraction fails or yields nothing; 404 if the project is missing or
     has no references to analyze.
@@ -99,10 +105,13 @@ async def extract_project_style(
         refs = store.list_references(pid)
         if not refs:
             raise HTTPException(404, "No reference content to analyze")
-        # Concatenate reference bodies (newest upload first), capped so a weak local model
-        # isn't overwhelmed — a few chapters are plenty to characterize a style.
-        chunks = [r.content for r in reversed(refs)]
-        sample = "\n\n".join(chunks)[:20000]
+        # Use the NEWEST reference: highest chapter_number if available, else last uploaded.
+        numbered = [r for r in refs if r.chapter_number is not None]
+        if numbered:
+            newest = max(numbered, key=lambda r: r.chapter_number)  # type: ignore[arg-type]
+        else:
+            newest = refs[-1]  # last uploaded (storage returns created_at ASC)
+        sample = newest.content
 
     lang = project.source_lang or "zh"
     try:
@@ -146,68 +155,35 @@ def list_references(pid: str, store: StorageService = Depends(get_storage)):
 
 
 @router.post("/projects/{pid}/references", response_model=ReferenceChapter, status_code=201)
-async def add_reference(
+def add_reference(
     pid: str,
     body: ReferenceCreate,
     store: StorageService = Depends(get_storage),
-    engine: TranslationEngine = Depends(get_translation_engine),
 ):
+    """Upload a reference chapter. LIGHTWEIGHT — no AI call (references-are-for-style pivot).
+
+    References are human English translations; their value is the TRANSLATION STYLE, captured
+    by the project-level ``extract-style`` pass (a deliberate user action), and glossary terms,
+    captured by the glossary pairing pass. So upload itself does NO engine call: it just stores
+    the text, parses the chapter number from the title, and runs the fast offline proper-noun
+    detector (``detected_names``). This makes upload instant and keeps the one AI pass on
+    references explicit (the "Extract style" button), rather than a slow surprise on every add.
+
+    (``summary``/``candidate_terms`` columns remain for back-compat but are no longer populated
+    at upload; a style profile replaces the per-reference summary.)
+    """
     _require_project(store, pid)
-    # Derive a summary + candidate glossary terms once, synchronously, at upload time
-    # (task 13). A deterministic rule-based proper-noun pass (field-fix #2) runs first and
-    # both (a) feeds the engine as a hint and (b) is stored separately as detected_names.
-    # If engine extraction fails (e.g. unreachable), keep the reference with the rule-based
-    # names anyway; the user can resummarize later.
     detected_names = extract_proper_nouns(body.content)
     chapter_number = parse_chapter_number(body.title)
-    summary: str | None = None
-    candidate_terms: list[str] = []
-    # Names-only mode (body.extract_summary == False): skip the slow AI extraction entirely
-    # and store just the detected names. Otherwise run the engine extraction, degrading
-    # gracefully (keep the reference with names only) if the engine is unreachable.
-    if body.extract_summary:
-        project = store.get_project(pid)
-        lang = (project.source_lang if project else None) or "zh"
-        try:
-            extraction = await engine.extract_reference(body.content, lang, detected_names)
-            summary = extraction.summary or None
-            candidate_terms = extraction.candidate_terms
-        except Exception:  # noqa: BLE001 - degrade gracefully, keep the reference
-            summary = None
-            candidate_terms = []
     return store.add_reference(
         pid,
         body.title,
         body.content,
-        summary,
-        candidate_terms,
+        None,  # summary — no longer extracted at upload (pivot to project style)
+        [],  # candidate_terms — same
         detected_names,
         chapter_number,
     )
-
-
-@router.post("/references/{ref_id}/resummarize", response_model=ReferenceChapter)
-async def resummarize_reference(
-    ref_id: str,
-    store: StorageService = Depends(get_storage),
-    engine: TranslationEngine = Depends(get_translation_engine),
-):
-    ref = store.get_reference(ref_id)
-    if not ref:
-        raise HTTPException(404, "Reference not found")
-    project = store.get_project(ref.project_id)
-    lang = (project.source_lang if project else None) or "zh"
-    detected_names = extract_proper_nouns(ref.content)
-    try:
-        extraction = await engine.extract_reference(ref.content, lang, detected_names)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Reference extraction failed: {exc}") from exc
-    updated = store.set_reference_summary(
-        ref_id, extraction.summary, extraction.candidate_terms, detected_names
-    )
-    if not updated:
-        raise HTTPException(404, "Reference not found")
-    return updated
 
 
 @router.post("/references/{ref_id}/redetect", response_model=ReferenceChapter)

@@ -56,7 +56,7 @@ class OpenRouterEngine(TranslationEngine):
     def __init__(
         self,
         api_key: str,
-        model: str = "deepseek/deepseek-chat",
+        model: str = "openrouter/free",
         base_url: str = "https://openrouter.ai/api/v1",
         referer: str = "",
         title: str = "NovelBridge",

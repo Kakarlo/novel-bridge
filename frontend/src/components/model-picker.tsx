@@ -35,7 +35,7 @@ export function ModelPicker() {
       {/* Read-only until the translate body carries a `model` field (BACKEND_TODO #2): the
           whole Select is disabled, so it shows `current` and can't be changed. value = the
           configured default; empty falls through to the placeholder below. */}
-      <Select value={current} disabled>
+      <Select value={current}>
         <SelectTrigger
           size="sm"
           className="w-[11rem]"

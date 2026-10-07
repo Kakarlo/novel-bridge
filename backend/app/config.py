@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     nb_debug_prompts: bool = False
 
     # Ollama engine
-    ollama_base_url: str = "http://192.168.254.22:11434"
+    ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3.5:0.8b"
     ollama_num_ctx: int = 16384
     ollama_num_thread: int = 2

@@ -1,13 +1,9 @@
-import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, Settings2, Wifi } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { DEFAULT_PROVIDER_ID, PROVIDERS, providerNeedsKey } from "@/api/providers";
-import { useModels } from "@/hooks/use-models";
-import { useCredentials, setCredentials, clearApiKey } from "@/hooks/use-credentials";
-import { useUnloadWarning } from "@/hooks/use-unload-warning";
+import { ModelStatus } from "@/components/model-status";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,23 +12,40 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ModelStatus } from "@/components/model-status";
+import { clearApiKey, setCredentials, useCredentials } from "@/hooks/use-credentials";
+import { useHealth } from "@/hooks/use-health";
+import { useModels } from "@/hooks/use-models";
+import { useUnloadWarning } from "@/hooks/use-unload-warning";
+import { cn } from "cn";
 
 /**
- * Interactive provider + model + API-key picker for the translate toolbar (BYO-key).
+ * Provider, model, and API-key management for the translation engine.
  *
- * The toolbar shows a compact button with the active provider/model; clicking it opens a
- * dialog where the user picks a provider, pastes their API key (for cloud providers), and
- * chooses a model. For Ollama the user can also set a custom server URL (task 23.5) so a
- * hosted-app user can point to their own local instance instead of the server's configured
- * address. All of it is backed by the credential store (use-credentials): the key is
- * session-only (never persisted to disk), the provider/model/ollamaUrl choice is remembered.
- * Translate / health / models all read the same store, so a change here takes effect immediately.
+ * The footer status row doubles as the picker trigger: it displays the current
+ * model, engine health, and provider status, while also opening the configuration
+ * dialog. Users can choose a provider, select a model, supply an API key for
+ * cloud providers, and configure a custom Ollama URL when using a local Ollama
+ * instance.
+ *
+ * State is backed by the credential store (`use-credentials`). API keys remain
+ * session-only and are never persisted to disk, while provider, model, and
+ * Ollama URL preferences are remembered. Health and model information are owned
+ * by this component so both the expanded status view and compact sidebar icon
+ * share a single source of truth without creating duplicate API requests.
  */
-export function ModelPicker() {
+
+export function ModelPicker({ compact = false }: { compact?: boolean }) {
   const creds = useCredentials();
   const activeProviderId = creds.provider || DEFAULT_PROVIDER_ID;
+  const health = useHealth();
+
+  const loadingHealth = health.kind === "loading";
+  const apiUp = health.kind === "ok";
+  const engineUp = apiUp && !!health.data?.reachable;
+  const engine = health.data?.engine;
   const { loading, providers, current, refresh } = useModels();
 
   const [open, setOpen] = useState(false);
@@ -46,20 +59,41 @@ export function ModelPicker() {
   // and the live-stream warning share one listener / one native prompt.
   useUnloadWarning("api-key", creds.anyKeySet);
 
+  const statusColor = loadingHealth
+    ? "text-muted-foreground"
+    : engineUp
+      ? "text-emerald-500"
+      : apiUp
+        ? "text-amber-500"
+        : "text-destructive";
+
   return (
     <>
       {/* The health status (dot + model + engine) IS the picker trigger — one clickable row
           instead of a separate status card above a provider button. */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        title={`${activeProviderLabel} · ${loading ? "loading models…" : activeModelLabel} — click to change`}
-        aria-label="Change translation provider, model, and API key"
-        className="flex w-full items-center gap-1 rounded-lg border bg-background/60 px-2.5 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        <ModelStatus asTrigger />
-        <Settings2 className="size-3.5 shrink-0 text-muted-foreground" />
-      </button>
+      {compact ? (
+        <Button size="icon-sm" variant="ghost" onClick={() => setOpen(true)} title="Model status & settings">
+          <Settings2 className={cn("size-4", statusColor)} />
+        </Button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={`${activeProviderLabel} · ${loading ? "loading models…" : activeModelLabel} — click to change`}
+          aria-label="Change translation provider, model, and API key"
+          className="flex w-full items-center gap-1 rounded-lg border bg-background/60 px-2.5 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <ModelStatus
+            asTrigger
+            loading={loadingHealth}
+            apiUp={apiUp}
+            engineUp={engineUp}
+            engine={engine}
+            displayModel={activeModelLabel}
+          />
+          <Settings2 className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      )}
 
       <ProviderDialog
         open={open}

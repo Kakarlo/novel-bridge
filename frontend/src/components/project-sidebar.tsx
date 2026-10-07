@@ -1,17 +1,17 @@
+import { BookMarked, ChevronLeft, ChevronRight, Moon, Plus, Sun, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { BookMarked, Moon, Plus, Sun, Trash2 } from "lucide-react";
 
+import type { Project, ProjectCreate, SourceLang } from "@/api/types";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DataManager } from "@/components/data-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { DataManager } from "@/components/data-manager";
-import { cn } from "@/lib/utils";
-import { langLabel } from "@/lib/format";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Theme } from "@/hooks/use-theme";
-import type { Project, ProjectCreate, SourceLang } from "@/api/types";
+import { langLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ModelPicker } from "./model-picker";
 
 interface ProjectSidebarProps {
@@ -24,6 +24,8 @@ interface ProjectSidebarProps {
   onCreate: (body: ProjectCreate) => Promise<Project>;
   onDelete: (id: string) => Promise<void>;
 }
+
+const SIDEBAR_STORAGE_KEY = "novelbridge-sidebar-collapsed";
 
 export function ProjectSidebar({
   projects,
@@ -40,6 +42,10 @@ export function ProjectSidebar({
   const [lang, setLang] = useState<SourceLang>("zh");
   const [submitting, setSubmitting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  });
+  const isExpanded = !collapsed;
 
   async function submitNew(e: React.FormEvent) {
     e.preventDefault();
@@ -58,32 +64,75 @@ export function ProjectSidebar({
   }
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        collapsed ? "w-16" : "w-72"
+      )}
+    >
       {/* Wordmark */}
-      <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
-        <div className="grid size-8 place-items-center rounded-md bg-foreground text-background">
-          <BookMarked className="size-4" />
+      <div className="flex items-center justify-between px-4 pt-5 pb-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="grid size-8 shrink-0 place-items-center rounded-md bg-foreground text-background">
+            <BookMarked className="size-4" />
+          </div>
+
+          <div
+            className={cn(
+              "overflow-hidden transition-all duration-200",
+              isExpanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"
+            )}
+          >
+            <div className="leading-tight whitespace-nowrap">
+              <div className="font-heading text-lg font-semibold tracking-tight">NovelBridge</div>
+              <div className="text-[11px] text-muted-foreground">context-aware translation</div>
+            </div>
+          </div>
         </div>
-        <div className="leading-tight">
-          <div className="font-heading text-lg font-semibold tracking-tight">NovelBridge</div>
-          <div className="text-[11px] text-muted-foreground">context-aware translation</div>
-        </div>
+
+        {isExpanded && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label="Collapse sidebar"
+            className="shrink-0"
+          >
+            <ChevronLeft />
+          </Button>
+        )}
       </div>
 
-      <div className="flex items-center justify-between px-5 pb-2">
-        <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Series</span>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          aria-label="New project"
-          onClick={() => setAdding((v) => !v)}
-          aria-expanded={adding}
-        >
-          <Plus className="transition-transform duration-200" />
-        </Button>
-      </div>
+      {!isExpanded && (
+        <div className="px-4 pb-3">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand sidebar"
+            className="w-full"
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      )}
 
-      {adding && (
+      {isExpanded && (
+        <div className="flex items-center justify-between px-5 pb-2">
+          <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Series</span>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="New project"
+            onClick={() => setAdding((v) => !v)}
+            aria-expanded={adding}
+          >
+            <Plus className="transition-transform duration-200" />
+          </Button>
+        </div>
+      )}
+
+      {isExpanded && adding && (
         <form onSubmit={submitNew} className="mx-3 mb-2 space-y-2.5 rounded-lg border bg-background p-3">
           <div className="space-y-1.5">
             <Label htmlFor="new-project-name" className="text-xs">
@@ -153,29 +202,39 @@ export function ProjectSidebar({
                     )}
                     onClick={() => onSelect(p.id)}
                   >
-                    <span
-                      className={cn(
-                        "absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent-brand transition-opacity duration-150",
-                        active ? "opacity-100" : "opacity-0"
-                      )}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{p.name}</div>
-                      <div className="text-[11px] text-muted-foreground">{langLabel(p.source_lang)}</div>
-                    </div>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Delete ${p.name}`}
-                      className="opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPendingDelete(p);
-                      }}
-                    >
-                      <Trash2 className="text-muted-foreground" />
-                    </Button>
+                    {isExpanded && (
+                      <span
+                        className={cn(
+                          "absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent-brand transition-opacity duration-150",
+                          active ? "opacity-100" : "opacity-0"
+                        )}
+                        aria-hidden
+                      />
+                    )}
+                    {isExpanded ? (
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{p.name}</div>
+                        <div className="text-[11px] text-muted-foreground">{langLabel(p.source_lang)}</div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-1 justify-center">
+                        <BookMarked className={cn("size-4", active ? "text-accent-brand" : "text-muted-foreground")} />
+                      </div>
+                    )}
+                    {isExpanded && (
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label={`Delete ${p.name}`}
+                        className="opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(p);
+                        }}
+                      >
+                        <Trash2 className="text-muted-foreground" />
+                      </Button>
+                    )}
                   </div>
                 </li>
               );
@@ -184,22 +243,28 @@ export function ProjectSidebar({
         )}
       </ScrollArea>
 
-      {/* Footer: engine/model health, then a bottom row of app actions (backup + theme). */}
-      <div className="space-y-2 border-t p-3">
-        <div className="min-w-0">
-          <ModelPicker />
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <DataManager />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={onToggleTheme}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      {/* Footer */}
+      <div className={cn("border-t p-3", !isExpanded && "flex flex-col items-center")}>
+        <div className={cn(isExpanded ? "space-y-2" : "flex flex-col items-center gap-3")}>
+          <div className={cn(isExpanded ? "min-w-0" : "")}>
+            <ModelPicker compact={!isExpanded} />
+          </div>
+
+          <div
+            className={cn(isExpanded ? "flex items-center justify-between gap-2" : "flex flex-col items-center gap-3")}
           >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </Button>
+            <DataManager compact={!isExpanded} />
+
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onToggleTheme}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <Sun /> : <Moon />}
+            </Button>
+          </div>
         </div>
       </div>
 

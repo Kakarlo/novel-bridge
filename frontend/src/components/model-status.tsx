@@ -1,35 +1,39 @@
 import { FlaskConical } from "lucide-react";
 
-import { useHealth } from "@/hooks/use-health";
 import { cn } from "@/lib/utils";
-import { useCredentials } from "@/hooks/use-credentials";
-import { useModels } from "@/hooks/use-models";
 
 /**
- * Compact engine/model health indicator for the sidebar footer. Driven by
- * GET /api/health (polled lightly), which now probes the actual LLM engine
- * rather than echoing config. Shows a reachable/unreachable dot plus the engine
- * and model, flags the mock engine prominently (so a leaked NB_ENGINE=mock is
- * obvious), and distinguishes "backend down" from "LLM engine down". Groundwork
- * for a future model picker.
+ * Presentational health and model indicator used by ModelPicker.
+ *
+ * Displays the current model, engine status, and connectivity state using data
+ * provided by its parent. The component is intentionally stateless and performs
+ * no API calls of its own, allowing ModelPicker to remain the single source of
+ * truth for health, model, and provider information.
+ *
+ * A reachable engine is shown with a green indicator, an unreachable engine
+ * with amber, and a backend failure with red. Mock engines are highlighted
+ * prominently to make test configurations obvious during development.
  */
+
 /**
- * `asTrigger` renders the status inline (no card border/background) so it can be the content
- * of the model-picker button — the health dot + model + engine double as the picker's label,
- * merging the two footer rows into one clickable control. Default renders the standalone card.
+ * `asTrigger` renders the indicator inline without its card styling so it can
+ * serve as the content of the ModelPicker trigger. This allows the model,
+ * engine status, and settings control to appear as a single unified sidebar
+ * action while reusing the same presentation component in other contexts.
  */
-export function ModelStatus({ asTrigger = false }: { asTrigger?: boolean }) {
-  const health = useHealth();
-  const creds = useCredentials();
-  const { current } = useModels();
+``
 
-  const data = health.data;
-  const loading = health.kind === "loading";
-  const apiUp = health.kind === "ok";
-  const engineUp = apiUp && !!data?.reachable;
-  const isMock = engineUp && data?.engine === "mock";
-  const displayModel = creds.model || current || "unknown model";
+interface ModelStatusProps {
+  asTrigger?: boolean;
+  loading: boolean;
+  apiUp: boolean;
+  engineUp: boolean;
+  engine?: string;
+  displayModel: string;
+}
 
+export function ModelStatus({ asTrigger = false, loading, apiUp, engineUp, engine, displayModel }: ModelStatusProps) {
+  const isMock = engineUp && engine === "mock";
   let dotClass: string;
   let dotTitle: string;
   if (loading) {
@@ -58,7 +62,7 @@ export function ModelStatus({ asTrigger = false }: { asTrigger?: boolean }) {
         title={dotTitle}
       />
       <div className="min-w-0 flex-1 leading-tight">
-        {engineUp && data ? (
+        {engineUp ? (
           <>
             <div className="flex items-center gap-1.5">
               <span className="truncate font-medium text-foreground" title={displayModel}>
@@ -74,7 +78,7 @@ export function ModelStatus({ asTrigger = false }: { asTrigger?: boolean }) {
                 </span>
               )}
             </div>
-            <div className="truncate text-muted-foreground">{isMock ? "mock engine" : `${data.engine} engine`}</div>
+            <div className="truncate text-muted-foreground">{isMock ? "mock engine" : `${engine} engine`}</div>
           </>
         ) : (
           <>
@@ -85,7 +89,7 @@ export function ModelStatus({ asTrigger = false }: { asTrigger?: boolean }) {
               {loading
                 ? "contacting backend"
                 : apiUp
-                  ? `${data?.engine ?? "engine"} not reachable`
+                  ? `${engine ?? "engine"} not reachable`
                   : "backend unreachable"}
             </div>
           </>

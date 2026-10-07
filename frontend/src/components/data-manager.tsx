@@ -1,6 +1,6 @@
+import { Download, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,8 @@ import { getStorage, getStorageBackend, type ExportBundle } from "@/storage";
  * Only shown with the IndexedDB backend — these operate on the local store (the API backend
  * can't materialize a cross-table bundle, by design).
  */
-export function DataManager() {
+
+export function DataManager({ compact = false }: { compact?: boolean }) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [pending, setPending] = useState<ExportBundle | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,6 +81,52 @@ export function DataManager() {
       setBusy(false);
       setPending(null);
     }
+  }
+
+  if (compact) {
+    return (
+      <>
+        <Button size="icon-sm" variant="ghost" onClick={doExport} title="Export a backup (JSON)">
+          <Download />
+        </Button>
+
+        <Button size="icon-sm" variant="ghost" onClick={() => fileInput.current?.click()} title="Import a backup (JSON)">
+          <Upload />
+        </Button>
+
+        <input ref={fileInput} type="file" accept="application/json,.json" className="hidden"  onChange={onFilePicked} />
+
+        <Dialog open={pending !== null} onOpenChange={(o) => !busy && !o && setPending(null)}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Import this backup?</DialogTitle>
+              <DialogDescription>
+                {pending && (
+                  <>
+                    {pending.projects?.length ?? 0} series, {pending.glossary?.length ?? 0} glossary entries,{" "}
+                    {pending.translations?.length ?? 0} translations.
+                    <br />
+                    <span className="text-foreground">Merge</span> adds to what you have (deduping glossary names).{" "}
+                    <span className="text-foreground">Replace</span> wipes the local store first.
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPending(null)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={() => runImport("replace")} disabled={busy}>
+                Replace
+              </Button>
+              <Button onClick={() => runImport("merge")} disabled={busy}>
+                Merge
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
   }
 
   return (

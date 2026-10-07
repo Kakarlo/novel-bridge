@@ -15,7 +15,15 @@ import {
 } from "lucide-react";
 
 import { api } from "@/api/client";
-import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang, type Translation } from "@/api/types";
+import {
+  isContentEvent,
+  isDoneEvent,
+  isErrorEvent,
+  isInfoEvent,
+  type SourceLang,
+  type Translation,
+  type TranslateRequest,
+} from "@/api/types";
 import { setStreaming } from "@/hooks/use-active-stream";
 import { useUnloadWarning } from "@/hooks/use-unload-warning";
 import { getCredentials } from "@/hooks/use-credentials";
@@ -225,9 +233,19 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
       const { provider, model } = getCredentials();
       const selection =
         provider || model ? { ...(provider ? { provider } : {}), ...(model ? { model } : {}) } : undefined;
+      // Local-first (task 23.4b): on the IndexedDB backend the browser owns all data, so it
+      // ships the glossary + style profile in the body and asks the server NOT to save
+      // (the client persists the result locally on the done event — task 23.4a). On the API
+      // backend these are omitted so the server loads from its DB and auto-saves, unchanged.
+      let stateless: Pick<TranslateRequest, "glossary" | "style_profile" | "save"> = {};
+      if (getStorageBackend() === "idb") {
+        const store = getStorage();
+        const [glossary, detail] = await Promise.all([store.listGlossary(projectId), store.getProject(projectId)]);
+        stateless = { glossary, style_profile: detail.project.style_profile, save: false };
+      }
       const stream = api.translateStream(
         projectId,
-        { raw_text: raw, source_lang: lang, ...(selection ? { selection } : {}) },
+        { raw_text: raw, source_lang: lang, ...(selection ? { selection } : {}), ...stateless },
         controller.signal
       );
       let acc = "";

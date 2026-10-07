@@ -69,6 +69,15 @@ and client disconnect.
   concurrency cap is saturated and no slot frees within `NB_QUEUE_TIMEOUT_SECONDS`, the stream
   emits a busy `error` event ("Server busy: too many translations in progress...") and closes
   (HTTP stays 200 for the event-stream).
+  **Stateless (local-first) body fields — task 23.4b, backward-compatible:** the body may also
+  carry `glossary` (a full `GlossaryEntry[]`), `style_profile` (string, `""` = none), and
+  `save` (bool, default `true`). When `glossary`/`style_profile` are present the server uses
+  them verbatim and does **no** storage read (references are skipped on that path too); omitted
+  → the server loads the glossary + style profile from the DB by `{id}` as before. `save:false`
+  → the server auto-saves **nothing** and `done.translation_id` is **`null`** (the IndexedDB
+  client persists the result client-side per 23.4a). The API-storage frontend sends none of
+  these, so its behavior is unchanged (DB load + server auto-save, non-null `translation_id`).
+  The `{id}` path segment and the pure-CRUD routes remain for now; dropping them is task 23.4e.
 - `GET /api/projects/{id}/translations`; `GET /api/translations/{tid}`
 - `GET /api/translations/{tid}/matches` — re-run occurrence detection against a saved
   translation using the project's **current** glossary; returns `TermMatch[]` (200), 404 when
@@ -81,7 +90,12 @@ and client disconnect.
   frontend polls this; the indicator shows engine-reachable (green) / backend-up-but-LLM-down
   (amber) / backend-down (red), and surfaces `engine=="mock"` prominently so a leaked
   `NB_ENGINE=mock` is obvious.
-- `GET /api/models` — **planned**, proxy of Ollama `GET /api/tags`, for the future model picker.
+- `GET /api/models` — **shipped (listing only)**. Returns `{models, current}`: `models` from
+  `engine.list_models()` (Ollama parses `/api/tags`, sorted, `[]` when unreachable; mock
+  `["mock"]`), `current` is the configured `OLLAMA_MODEL`. Not gated. The engine already honors
+  a per-request `TranslationRequest.model`, but the translate REQUEST BODY does not yet carry a
+  `model` field — picking a model per request is a pending small backend add (see Model picker
+  below). Contract is single-provider today; see the multi-provider target under BYO-token.
 
 ## Ollama specifics (verified)
 
@@ -178,13 +192,32 @@ COLLATE NOCASE)`. **No migration — no production data; redefine `schema.sql` a
   after the glossary data layer. An optimized flow for paid/hosted models is a later follow-up.
 - **Model status probe (DONE):** `GET /api/health` now calls `engine.health()` and reports real
   reachability (see the API section). The frontend indicator keys off `reachable`.
-- **Model picker (deferred):** choose the model per request from a list. Backend-first
-  (`GET /api/models` proxying Ollama `/api/tags` + request plumbing). The health/model-status
-  indicator (shipped) is the groundwork.
-- **Bring-your-own LLM API token (future track — do not build yet):** add a hosted-model engine
-  behind the `TranslationEngine` interface so users can translate with an API key instead of a
-  local Ollama. Local-first still holds; accounts/cloud (behind `StorageService`) only if
-  adoption warrants it. Don't block this in task 14.
+- **Model picker (listing DONE; per-request switch PENDING):** `GET /api/models` + the engine's
+  `list_models()` shipped. What's left for an actual per-request switch: add a `model` field to
+  `TranslateRequest` and pass it into `TranslationRequest.model` in `api/translate.py` (the
+  engine already honors it). That's a small backend task to do WHEN the frontend picker is built,
+  so the SSE contract changes once. Frontend picker UI is `FRONTEND_TODO.md` #5/#5a.
+- **Bring-your-own LLM API token + multi-provider (future track — do not build yet):** add
+  hosted-model engines (Gemini, OpenAI, Claude, OpenRouter) behind the `TranslationEngine`
+  interface so users can translate with an API key instead of local Ollama. The engine ABC is
+  the seam and already works (`stream`/`extract_reference`/`health`/`list_models`) — a new engine
+  is additive, no route change. Design implications to honor when this lands (so the
+  single-provider surfaces shipped now evolve cleanly rather than get rewritten):
+  - **`/api/models` becomes provider-aware.** Target shape (not built yet):
+    `{ providers: [{ id, label, reachable, needs_key, models: string[] }], ... }`. The current
+    flat `{models, current}` is the single-provider special case. `current` is Ollama-centric
+    (one global default); multi-provider needs a per-provider (likely per-project) "current".
+  - **Reachability splits per provider.** `health()`/the status indicator assume one engine; a
+    cloud provider's state is "key present? key valid? provider up?" — distinct from "unreachable".
+    An empty model list must be disambiguable: unreachable vs. no-key-configured.
+  - **Per-request override becomes `provider` + `model`**, not just `model`. When wiring the
+    translate-body `model` field (Model picker above), model it as a `{provider, model}` pair even
+    though provider is fixed to Ollama today, so the cloud addition is a data change.
+  - **Credential storage** (API keys) goes behind `StorageService`, not just env — a security
+    decision to flag then (env-only vs. encrypted store; never log/echo key values). Local-first
+    still holds; accounts/cloud only if adoption warrants it. Don't block task 14.
+  - Frontend groundwork for all this is pre-noted in `FRONTEND_TODO.md` #5a (build the picker
+    provider-aware now).
 
 Hard rule for all of the above: flag major decisions for confirmation even in autopilot, keep
 storage/engine behind their interfaces, keep tests offline on the mock engine, one commit per

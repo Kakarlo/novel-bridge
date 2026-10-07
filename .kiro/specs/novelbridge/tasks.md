@@ -278,8 +278,17 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
     - [~] 23.4 Thin the backend to stateless (THE contract break — do in small commits):
       - [x] 23.4a Client-side auto-save of translations on the idb backend
             (`StorageService.saveTranslation`); `TranslationReview` hidden on idb. (partial step 4)
-      - [ ] 23.4b `POST /translate` takes `glossary` + `style_profile` + `raw_text` in the body
+      - [x] 23.4b `POST /translate` takes `glossary` + `style_profile` + `raw_text` in the body
             (no server-side load, no server-side auto-save); frontend sends them on the idb backend.
+            Done as a BACKWARD-COMPATIBLE extension (the `pid` route and CRUD-route removal stay
+            for 23.4e): `TranslateRequest` gained optional `glossary` / `style_profile` / `save`.
+            When `glossary`/`style_profile` are provided the server uses them verbatim and does
+            NO storage read (references are also skipped on that path); omitted → it loads from
+            the DB by `pid` as before. `save=false` → no server-side auto-save and
+            `done.translation_id` is null (the idb client persists client-side per 23.4a); the
+            API backend defaults `save=true`, unchanged. Frontend sends glossary + style_profile +
+            `save:false` only on the idb backend. 185 backend tests pass (3 new stateless cases);
+            frontend builds clean.
       - [ ] 23.4c `extract-style` takes the reference `content` in the body; `extract-glossary`
             takes `raw_text` + `output_text`; add `POST /api/detect-names` taking `{content}`
             (spaCy stays server-side). Frontend sends content from the local store.

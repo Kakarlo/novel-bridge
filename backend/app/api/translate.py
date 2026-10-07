@@ -77,8 +77,19 @@ def translate(
         fallback=fallback_engine,
     )
 
-    glossary = store.list_glossary(pid)
-    references = store.list_references(pid)
+    # --- Stateless context resolution (task 23.4b) -----------------------------
+    # The local-first (IndexedDB) client owns the data and ships it in the body, so the server
+    # does no storage read when `glossary`/`style_profile` are supplied. When they're omitted
+    # (today's API-backend clients) the server falls back to loading from storage by `pid`.
+    glossary = body.glossary if body.glossary is not None else store.list_glossary(pid)
+    style_profile = (
+        body.style_profile if body.style_profile is not None else (project.style_profile or "")
+    )
+    # References only feed the DERIVED reference context used for budgeting/notice. On the
+    # stateless (body-driven) path the browser doesn't ship references — the project-level
+    # style profile replaced per-reference summaries — so skip the storage read entirely when
+    # the client drove the glossary. Only the API-storage path still consults references.
+    references = [] if body.glossary is not None else store.list_references(pid)
     built = cb.build(
         glossary, references, body.raw_text, settings.nb_context_budget_tokens
     )
@@ -114,7 +125,7 @@ def translate(
         glossary=glossary,
         # reference_context=built.reference_context,
         model=requested_model,
-        style_profile=project.style_profile or "",
+        style_profile=style_profile,
     )
 
     sem = _get_semaphore(settings.nb_max_concurrent_translations)
@@ -170,11 +181,17 @@ def translate(
                 return
 
             output_text = "".join(collected).strip()
-            # Auto-save on completion (Requirement 4.6 / decision Q13).
-            saved = store.save_translation(
-                pid, body.source_lang, body.raw_text, output_text, model_used
-            )
-            done_event: dict = {"done": True, "translation_id": saved.id}
+            # Auto-save on completion (Requirement 4.6 / decision Q13), UNLESS the client
+            # drives persistence itself (local-first idb backend sends save=false and writes
+            # the result to IndexedDB from the `done` event — task 23.4a/b). When save=false
+            # the server stays stateless: no storage write, and translation_id is null.
+            translation_id = None
+            if body.save:
+                saved = store.save_translation(
+                    pid, body.source_lang, body.raw_text, output_text, model_used
+                )
+                translation_id = saved.id
+            done_event: dict = {"done": True, "translation_id": translation_id}
             # Opt-in in-context review (task 14): detect glossary terms in the output and
             # fold them into the terminal event so the client can offer approve/reject.
             # Detection only — the translation itself is never modified.

@@ -309,6 +309,24 @@ class TranslateRequest(BaseModel):
     # so this is fully backward-compatible. The engine already honors a per-request model
     # via TranslationRequest.model; see api/translate.py for how `selection` is resolved.
     selection: ModelSelection | None = None
+    # --- Stateless (local-first) contract, task 23.4b ---------------------------
+    # The browser (IndexedDB backend) owns all user data, so it ships the context the
+    # translation needs in the request body instead of the server loading it by `pid`. All
+    # three are OPTIONAL and backward-compatible:
+    #   - ``glossary`` None       → the server loads the project glossary from storage (the
+    #                               API-storage backend's behavior). A provided list (even
+    #                               empty) is used verbatim and NO storage read happens.
+    #   - ``style_profile`` None  → the server reads the project's stored style profile. A
+    #                               provided string (including "") is used verbatim.
+    #   - ``save`` True (default) → the server auto-saves the completed translation and the
+    #                               `done` event carries its id (today's API-backend behavior).
+    #                               The idb client sends ``save=false`` because it persists the
+    #                               result client-side (task 23.4a); then no storage write
+    #                               happens and `done.translation_id` is null.
+    # Existing clients that send none of these see identical behavior to before.
+    glossary: list[GlossaryEntry] | None = None
+    style_profile: str | None = None
+    save: bool = True
 
     @field_validator("raw_text")
     @classmethod

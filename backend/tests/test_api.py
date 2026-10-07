@@ -225,6 +225,61 @@ def test_translate_without_review_omits_matches(client):
     assert "matches" not in done  # streaming path untouched when review is off
 
 
+def test_translate_stateless_body_glossary_no_db_read(client):
+    """Task 23.4b: a body-supplied glossary is used verbatim and the server does NOT read
+    storage. Prove it by storing a DB glossary that would substitute, then overriding with a
+    different body glossary — the body wins (DB entry is ignored)."""
+    pid = _create_project(client)
+    # DB glossary that would turn 林 -> Lin if the server loaded it.
+    client.post(f"/api/projects/{pid}/glossary", json={"surface_form": "Lin", "source_term": "林"})
+    # Body glossary maps the SAME source term to a different spelling.
+    body_glossary = [
+        {
+            "id": "x1",
+            "project_id": pid,
+            "surface_form": "Forrest",
+            "source_term": "林",
+            "status": "approved",
+            "category": "character",
+            "gender": None,
+            "note": None,
+            "created_at": None,
+        }
+    ]
+    _events, done = _run_translate(
+        client, pid, "我是林", extra={"glossary": body_glossary, "save": False}
+    )
+    streamed = "".join(e.get("content", "") for e in _events)
+    assert "我是Forrest" in streamed  # body glossary applied, not the DB's "Lin"
+    assert "Lin" not in streamed
+
+
+def test_translate_save_false_skips_autosave_and_null_id(client):
+    """Task 23.4b: save=false → the server persists nothing and done.translation_id is null
+    (the local-first client saves client-side instead)."""
+    pid = _create_project(client)
+    _events, done = _run_translate(
+        client, pid, "hello there", extra={"glossary": [], "save": False}
+    )
+    assert done["translation_id"] is None
+    # Nothing was auto-saved server-side.
+    assert client.get(f"/api/projects/{pid}/translations").json() == []
+
+
+def test_translate_body_style_profile_used_verbatim(client):
+    """Task 23.4b: a body-supplied style_profile is accepted (used verbatim; empty string is a
+    valid "no style"). The stream still completes normally with save=false."""
+    pid = _create_project(client)
+    _events, done = _run_translate(
+        client,
+        pid,
+        "hello",
+        extra={"glossary": [], "style_profile": "Formal, archaic register.", "save": False},
+    )
+    assert done["done"] is True
+    assert done["translation_id"] is None
+
+
 def test_saved_translation_matches_endpoint(client):
     pid = _create_project(client)
     client.post(

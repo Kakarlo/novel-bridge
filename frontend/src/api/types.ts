@@ -141,6 +141,17 @@ export interface TranslateRequest {
   // provider's default. Today provider is fixed to the local engine; sending a mismatching
   // provider yields a 400.
   selection?: Partial<ModelSelection>;
+  // --- Stateless (local-first) contract, task 23.4b ---
+  // The local (IndexedDB) backend owns all user data, so it ships the translation context in
+  // the body instead of letting the server load it by project id. All three are optional and
+  // backward-compatible — the API-storage backend omits them and the server loads from its DB.
+  //   glossary       — the project's glossary (used verbatim; empty array = no terms).
+  //   style_profile  — the project's writing-style profile ("" = none).
+  //   save           — when false, the server does NOT auto-save; the client persists the
+  //                    result locally and the done event's translation_id is null.
+  glossary?: GlossaryEntry[];
+  style_profile?: string | null;
+  save?: boolean;
 }
 
 // GET /api/models — the current single-provider (local Ollama) contract. `models` is empty
@@ -185,7 +196,10 @@ export interface SseInfoEvent {
 }
 export interface SseDoneEvent {
   done: true;
-  translation_id: string;
+  // The id of the server-saved translation, or null when the server did not save (the
+  // local-first backend sends save=false and persists the result in IndexedDB itself — the
+  // client assigns the id in that case). See TranslateRequest.save (task 23.4b).
+  translation_id: string | null;
   // Present only when the request opted into term review (task 14).
   matches?: TermMatch[];
 }

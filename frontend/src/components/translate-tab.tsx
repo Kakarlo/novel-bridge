@@ -431,13 +431,12 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           {/* Source pane */}
           <section className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
             <PaneHeader label={`Source · ${langLabel(lang)}`} meta={`${raw.length.toLocaleString()} chars`} />
-            {/* Experimental review surface — lives on the source side (the user reads the
-                English pane, so it won't cover the translation). Only for a persisted
-                translation; 404/empty from the gated endpoints renders nothing. */}
-            {/* The review panel reads the SOURCE chapter from the server by id; on the local
-                (IndexedDB) backend the server has no such record, so it's shown only on the
-                API backend. (Client-side review is a later follow-up.) */}
-            {viewingId && (status === "viewing" || status === "done") && getStorageBackend() === "api" && (
+            {/* Review surface — lives on the source side (the user reads the English pane, so
+                it won't cover the translation). Only for a persisted translation; empty
+                groups render nothing. Works on BOTH backends (task 23.4d): the API backend
+                reads the server translation row; the idb backend ships the saved translation's
+                texts in the body for glossary extraction and never calls a server row. */}
+            {viewingId && (status === "viewing" || status === "done") && (
               <TranslationReview projectId={projectId} translationId={viewingId} onGlossaryChanged={onSaved} />
             )}
             <Textarea

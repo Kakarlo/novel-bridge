@@ -15,6 +15,7 @@ import type {
   ProjectDetail,
   ReferenceChapter,
   ReferenceCreate,
+  TermMatch,
   Translation,
 } from "@/api/types";
 import type { ExportBundle, StorageService } from "./types";
@@ -92,6 +93,10 @@ export class ApiStorageService implements StorageService {
   }
   deleteTranslation(tid: string): Promise<void> {
     return api.deleteTranslation(tid);
+  }
+  // The server recomputes matches against its current glossary for the saved translation.
+  getTranslationMatches(tid: string): Promise<TermMatch[]> {
+    return api.getTranslationMatches(tid);
   }
 
   // --- portability ---

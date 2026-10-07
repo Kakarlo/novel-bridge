@@ -28,8 +28,10 @@ import type {
   ProjectDetail,
   ReferenceChapter,
   ReferenceCreate,
+  TermMatch,
   Translation,
 } from "@/api/types";
+import { findOccurrences } from "@/lib/term-match";
 import type { ExportBundle, SaveTranslationInput, StorageService } from "./types";
 
 function newId(): string {
@@ -271,6 +273,16 @@ export class IndexedDbStorage implements StorageService {
 
   async deleteTranslation(tid: string): Promise<void> {
     await this.db.translations.delete(tid);
+  }
+
+  // Compute term-occurrence matches locally (task 23.4d): no server row exists on this
+  // backend, so port the backend's on-demand recompute — load the saved translation and the
+  // project's CURRENT glossary, then run the stdlib matcher (findOccurrences). Detection only.
+  async getTranslationMatches(tid: string): Promise<TermMatch[]> {
+    const translation = await this.db.translations.get(tid);
+    if (!translation) throw new Error("Translation not found");
+    const glossary = await this.listGlossary(translation.project_id);
+    return findOccurrences(translation.output_text, glossary);
   }
 
   // --- portability (JSON backup / restore / merge) ---

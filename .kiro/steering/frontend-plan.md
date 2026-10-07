@@ -88,6 +88,17 @@ still work (source term + English name → approved). Note: a manually added Eng
 starts as `candidate` (same rule as promoted terms) — approve it to make it steer the model.
 Remaining: Phase 14.6 in-context review UI (translate tab) + the opt-in review toggle.
 
+**Local-first review on the idb backend (task 23.4d) — DONE.** `TranslationReview` (translate
+tab, source-side panel over a saved translation) is no longer gated to the API backend — it
+renders on both. Term-occurrence detection moved client-side: `findOccurrences`
+(`src/lib/term-match.ts`, a port of `services/term_match.py`) powers a `getTranslationMatches`
+method on the `StorageService` (API impl → server endpoint, idb impl → local compute), so the
+backend-switch lives in one place. The panel's "Suggest pairs" LLM call ships the saved
+translation's `raw_text`/`output_text`/`source_lang` in the body on idb (stateless
+`extract-glossary`, no server row); `confirmPair` writes through `getStorage().createGlossary`,
+so approve works locally. Source-language terms stay API-only/experimental and degrade to empty
+on idb.
+
 ### Earlier plan (kept for reference)
 
 This is **table stakes** (the competitors already have it) — build it clean and credible, keep

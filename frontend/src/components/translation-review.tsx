@@ -3,8 +3,8 @@ import { toast } from "sonner";
 import { ArrowRight, Check, ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
-import type { GlossaryPairSuggestion } from "@/api/types";
-import { getStorage } from "@/storage";
+import type { GlossaryPairSuggestion, SourceLang } from "@/api/types";
+import { getStorage, getStorageBackend } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -64,7 +64,15 @@ export function TranslationReview({
     setExtracting(true);
     try {
       // On-demand LLM call: pairs source terms to the English spellings in the translation.
-      const result = await api.translationExtractGlossary(translationId);
+      // On the idb backend the server has no translation row, so ship the saved translation's
+      // texts in the body (stateless path, task 23.4c/d); the API backend omits them and the
+      // server loads by tid, unchanged.
+      let texts: { raw_text: string; output_text: string; source_lang: SourceLang } | undefined;
+      if (getStorageBackend() === "idb") {
+        const t = await getStorage().getTranslation(translationId);
+        texts = { raw_text: t.raw_text, output_text: t.output_text, source_lang: t.source_lang };
+      }
+      const result = await api.translationExtractGlossary(translationId, texts);
       setPairs(result);
       setExtracted(true);
       if (result.length === 0) toast.info("No new pairings found");

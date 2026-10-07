@@ -90,7 +90,9 @@ and client disconnect.
   `GlossaryPairSuggestion[]`. Body (optional, task 23.4c, backward-compatible): `raw_text` +
   `output_text` (+ `source_lang`, default `zh`) → **stateless**, both present means the server
   pairs them verbatim with **no DB read** (so `{tid}` need not exist); omitted → load the saved
-  translation by `tid` as before (404 when missing). Also carries `selection`.
+  translation by `tid` as before (404 when missing). Also carries `selection`. The idb review
+  panel (task 23.4d) uses the stateless path — it ships the saved translation's texts from the
+  local store so "Suggest pairs" works with no server translation row.
 - `POST /api/detect-names` — **new (task 23.4c)**, stateless proper-noun detection: body
   `{content}` → `{detected_names: string[]}`. Pure offline spaCy compute (design §8.4), no
   storage, no engine, **no glossary cross-check** (it has no project context). The DB-free twin
@@ -101,6 +103,12 @@ and client disconnect.
 - `GET /api/translations/{tid}/matches` — re-run occurrence detection against a saved
   translation using the project's **current** glossary; returns `TermMatch[]` (200), 404 when
   missing. Recomputed on demand (not stored); detection only, never rewrites the translation.
+  **Client-side twin (task 23.4d):** `term_match` is pure stdlib regex (no NLP), so the
+  frontend ships `findOccurrences` (`frontend/src/lib/term-match.ts`, a faithful port of
+  `services/term_match.py`). The backend-switch lives in ONE place — `getTranslationMatches`
+  on the frontend `StorageService`: the API impl calls this endpoint, the idb impl loads the
+  local translation + current glossary and computes locally (no server row exists on idb). The
+  spaCy passes (pronoun/source-term) stay backend compute endpoints.
 - `DELETE /api/translations/{tid}` — 204 on success, 404 when missing. Backed by
   `delete_translation` on `StorageService` + the SQLite impl.
 - `GET /api/health` — returns `{status, reachable, engine, model}`. **Now probes the actual

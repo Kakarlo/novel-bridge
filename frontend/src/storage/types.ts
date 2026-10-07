@@ -24,6 +24,7 @@ import type {
   ProjectDetail,
   ReferenceChapter,
   ReferenceCreate,
+  TermMatch,
   Translation,
 } from "@/api/types";
 
@@ -84,6 +85,11 @@ export interface StorageService {
   listTranslations(projectId: string): Promise<Translation[]>;
   getTranslation(tid: string): Promise<Translation>;
   deleteTranslation(tid: string): Promise<void>;
+  // Term-occurrence matches for a saved translation against the project's CURRENT glossary,
+  // for the in-context review loop (task 14). Detection only — never rewrites the translation.
+  // The API backend recomputes server-side (GET /translations/{tid}/matches); the IndexedDB
+  // backend computes locally with findOccurrences (task 23.4d — no server row exists on idb).
+  getTranslationMatches(tid: string): Promise<TermMatch[]>;
 
   // --- portability (JSON backup / restore / merge) ---
   exportAll(): Promise<ExportBundle>;

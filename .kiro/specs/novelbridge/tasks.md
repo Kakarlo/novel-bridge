@@ -306,16 +306,23 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
             Extract style, Redetect, and style save/clear all go through the active store so
             both backends work. 188 backend tests pass (3 new stateless cases); frontend builds
             clean. (23.4d restores client-side term review on idb; 23.4e removes the CRUD routes.)
-      - [~] 23.4d Decide per deterministic pass (term_match, pronoun/source-term) whether it
-        moves to the client as plain TS or stays a stateless compute endpoint; restore
-        client-side term review so the review panel works on the idb backend.
-        DECISION: `term_match` is pure stdlib regex (no NLP), so it moves CLIENT-SIDE as
-        plain TS — `frontend/src/lib/term-match.ts` is a faithful port of
-        `services/term_match.py` (`findOccurrences`, detection only). The spaCy-dependent
-        passes (pronoun/source-term) STAY backend stateless-compute endpoints. DONE so far:
-        the TS port (builds clean). REMAINING: wire the review panel/highlighting to use it
-        on the idb backend (translate-tab currently gates `TranslationReview` to the API
-        backend) so approve/reject works locally — next session.
+      - [x] 23.4d Decide per deterministic pass (term_match, pronoun/source-term) whether it
+            moves to the client as plain TS or stays a stateless compute endpoint; restore
+            client-side term review so the review panel works on the idb backend.
+            DECISION: `term_match` is pure stdlib regex (no NLP), so it moves CLIENT-SIDE as
+            plain TS — `frontend/src/lib/term-match.ts` is a faithful port of
+            `services/term_match.py` (`findOccurrences`, detection only). The spaCy-dependent
+            passes (pronoun/source-term) STAY backend stateless-compute endpoints. DONE: the TS
+            port; the backend-switch for matches lives in ONE place — `getTranslationMatches(tid)`
+            added to the `StorageService` interface (API impl → `GET /translations/{tid}/matches`;
+            idb impl → load the local translation + current glossary, compute via
+            `findOccurrences`, no server call). `TranslationReview` is un-gated (renders on both
+            backends); its "Suggest pairs" LLM call ships the saved translation's
+            `raw_text`/`output_text`/`source_lang` in the body on idb (stateless `extract-glossary`,
+            no server row) and omits them on the API backend (loads by `tid`, unchanged).
+            `confirmPair` already writes through `getStorage().createGlossary`, so approve/reject
+            is backend-agnostic. Source-terms stays API-only/experimental and degrades to `[]` on
+            idb (404 swallowed). No backend change; 189 backend tests pass, frontend builds clean.
       - [ ] 23.4e Remove the pure-CRUD routes from the backend once the browser is authoritative.
     - [ ] 23.5 Local-model access from the hosted app + the Ollama-config-in-UI fields + the
           user guide with the security warnings (design §6/§9). Decided: browser → `localhost`

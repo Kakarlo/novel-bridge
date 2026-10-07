@@ -11,6 +11,8 @@ venv/
 .env
 .env.*
 !.env.example
+# Non-secret build-time config that MUST ship (hosted storage default). No secrets here.
+!frontend/.env.production
 
 # SQLite data
 *.db

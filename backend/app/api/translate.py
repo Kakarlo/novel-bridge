@@ -112,7 +112,7 @@ def translate(
         raw_text=body.raw_text,
         source_lang=body.source_lang,
         glossary=glossary,
-        reference_context=built.reference_context,
+        # reference_context=built.reference_context,
         model=requested_model,
         style_profile=project.style_profile or "",
     )

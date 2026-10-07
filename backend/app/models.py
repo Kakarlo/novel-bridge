@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 
 SourceLang = Literal["zh", "ja"]
 GlossaryStatus = Literal["candidate", "approved", "rejected"]
-GlossaryCategory = Literal["character", "title", "term"]
+GlossaryCategory = Literal["character", "title", "term", "location", "organization", "item"]
 Gender = Literal["male", "female", "unknown"]
 
 

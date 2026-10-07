@@ -2,6 +2,8 @@ import { FlaskConical } from "lucide-react";
 
 import { useHealth } from "@/hooks/use-health";
 import { cn } from "@/lib/utils";
+import { useCredentials } from "@/hooks/use-credentials";
+import { useModels } from "@/hooks/use-models";
 
 /**
  * Compact engine/model health indicator for the sidebar footer. Driven by
@@ -13,13 +15,15 @@ import { cn } from "@/lib/utils";
  */
 export function ModelStatus() {
   const health = useHealth();
+  const creds = useCredentials();
+  const { current } = useModels();
+
   const data = health.data;
   const loading = health.kind === "loading";
-  // The backend API responded.
   const apiUp = health.kind === "ok";
-  // The backend reached the actual LLM engine.
   const engineUp = apiUp && !!data?.reachable;
   const isMock = engineUp && data?.engine === "mock";
+  const displayModel = creds.model || current || "unknown model";
 
   let dotClass: string;
   let dotTitle: string;
@@ -50,8 +54,8 @@ export function ModelStatus() {
         {engineUp && data ? (
           <>
             <div className="flex items-center gap-1.5">
-              <span className="truncate font-medium text-foreground" title={data.model}>
-                {data.model || "unknown model"}
+              <span className="truncate font-medium text-foreground" title={displayModel}>
+                {displayModel}
               </span>
               {isMock && (
                 <span

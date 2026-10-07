@@ -28,7 +28,7 @@ from app.services.prompt import (
     build_translation_messages,
 )
 
-_VALID_CATEGORIES = {"character", "title", "term"}
+_VALID_CATEGORIES = {"character", "title", "term", "location", "organization", "item"}
 _VALID_GENDERS = {"male", "female", "unknown"}
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -164,6 +164,11 @@ class OllamaEngine(TranslationEngine):
         # Buffer tails to strip a <think> block if the model emits one anyway.
         in_think = False
         meta: dict | None = None
+
+        for i, msg in enumerate(payload["messages"]):
+            print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
+            print(msg["content"])
+
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream(

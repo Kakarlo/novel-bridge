@@ -17,6 +17,7 @@ import {
 import { api } from "@/api/client";
 import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang, type Translation } from "@/api/types";
 import { setStreaming } from "@/hooks/use-active-stream";
+import { getCredentials } from "@/hooks/use-credentials";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,7 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HistoryPanel } from "@/components/history-panel";
 import { TranslationReview } from "@/components/translation-review";
-import { ModelPicker } from "@/components/model-picker";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { langLabel } from "@/lib/format";
 
@@ -223,7 +223,17 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     setAtBottom(true);
 
     try {
-      const stream = api.translateStream(projectId, { raw_text: raw, source_lang: lang }, controller.signal);
+      // Per-request engine override (BYO-key): send the chosen provider/model as `selection`
+      // (the API key rides on the X-LLM-Api-Key header, added by the client). Omit the
+      // selection entirely when nothing is chosen so the server falls back to its default.
+      const { provider, model } = getCredentials();
+      const selection =
+        provider || model ? { ...(provider ? { provider } : {}), ...(model ? { model } : {}) } : undefined;
+      const stream = api.translateStream(
+        projectId,
+        { raw_text: raw, source_lang: lang, ...(selection ? { selection } : {}) },
+        controller.signal
+      );
       for await (const event of stream) {
         if (isContentEvent(event)) {
           setOutput((prev) => prev + event.content);
@@ -304,7 +314,6 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           <StatusPill status={status} />
         </div>
         <div className="flex items-center gap-2">
-          <ModelPicker />
           <div className="flex items-center gap-1.5">
             <Languages className="size-4 text-muted-foreground" />
             <Select value={lang} onValueChange={(v) => setLang(v as SourceLang)} disabled={streaming}>

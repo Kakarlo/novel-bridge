@@ -96,6 +96,19 @@ class OpenRouterEngine(TranslationEngine):
             "stream": True,
         }
 
+        for i, msg in enumerate(payload["messages"]):
+            print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
+            print(msg["content"])
+
+        # print("\n========== OPENROUTER REQUEST ==========")
+        # print("MODEL:", payload["model"])
+
+        # for i, msg in enumerate(payload["messages"]):
+        #     print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
+        #     print(msg["content"])
+
+        # print("========================================\n")
+
         in_think = False
         model_used = payload["model"]
 

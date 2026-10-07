@@ -44,7 +44,7 @@ export interface ReferenceChapter {
 }
 
 export type GlossaryStatus = "candidate" | "approved" | "rejected";
-export type GlossaryCategory = "character" | "title" | "term";
+export type GlossaryCategory = "character" | "title" | "term" | "location" | "organization" | "item";
 export type Gender = "male" | "female" | "unknown";
 
 // English-first glossary entry (task 14). `surface_form` is the English name (always

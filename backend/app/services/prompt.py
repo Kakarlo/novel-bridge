@@ -25,6 +25,9 @@ _LANG_NAMES = {"zh": "Chinese", "ja": "Japanese"}
 # Fence used to delimit the raw chapter so the instruction can point at it unambiguously.
 _RAW_OPEN = "<<<RAW_CHAPTER_START>>>"
 _RAW_CLOSE = "<<<RAW_CHAPTER_END>>>"
+# Additional fence for translated chapters
+_TRANS_OPEN = "<<<ENGLISH_TRANSLATION_START>>>"
+_TRANS_CLOSE = "<<<ENGLISH_TRANSLATION_END>>>"
 
 
 def _lang_name(source_lang: str) -> str:
@@ -74,46 +77,89 @@ def _prompt_glossary_entries(req: TranslationRequest) -> list:
 
 
 def _format_glossary_blocks(entries: list) -> list[str]:
-    """Render up to two glossary blocks: authoritative source=>English pairs, and a
-    category/gender-aware 'preferred English spellings' list for English-first entries."""
+    """Render glossary and cast blocks.
+
+    Glossary:
+        Authoritative source => translation mappings only.
+
+    Cast:
+        Character metadata (gender, notes) separated from translation rules.
+    """
     pairs = [e for e in entries if e.source_term]
     english_only = [e for e in entries if not e.source_term]
 
     blocks: list[str] = []
 
+    # ------------------------------------------------------------------
+    # Glossary (pure mappings)
+    # ------------------------------------------------------------------
     if pairs:
         lines = "\n".join(
-            f"- {e.source_term} => {e.surface_form}" + (f"  ({e.note})" if e.note else "")
+            f"- {e.source_term} => {e.surface_form} [{e.category}]"
             for e in pairs
         )
+
         blocks.append(
-            "## Glossary (authoritative term mappings — translate the source term exactly "
-            f"as the mapped English)\n{lines}"
+            "## Glossary (authoritative term mappings — translate the source term "
+            f"exactly as the mapped English; category tags provide context)\n{lines}"
         )
 
-    if english_only:
-        # Group by category so a weak model gets structure. Characters carry gender inline
-        # (steers zh->en pronoun consistency); titles are grouped; terms are a plain list.
-        by_cat: dict[str, list] = {"character": [], "title": [], "term": []}
-        for e in english_only:
-            by_cat.get(e.category, by_cat["term"]).append(e)
+    # ------------------------------------------------------------------
+    # Cast / metadata
+    # ------------------------------------------------------------------
+    cast_entries = [
+        e for e in entries
+        if e.category == "character"
+    ]
 
-        sub: list[str] = []
-        for e in by_cat["character"]:
-            gender = f" ({e.gender})" if e.gender and e.gender != "unknown" else ""
-            note = f" — {e.note}" if e.note else ""
-            sub.append(f"- {e.surface_form}{gender}{note}  [character]")
-        for e in by_cat["title"]:
-            note = f" — {e.note}" if e.note else ""
-            sub.append(f"- {e.surface_form}{note}  [title]")
-        for e in by_cat["term"]:
-            note = f" — {e.note}" if e.note else ""
-            sub.append(f"- {e.surface_form}{note}")
+    if cast_entries:
+        cast_lines: list[str] = []
+
+        for e in cast_entries:
+            source = (
+                f"{e.source_term} => {e.surface_form}"
+                if e.source_term
+                else e.surface_form
+            )
+
+            gender = (
+                f" [{e.gender.capitalize()}]"
+                if e.gender and e.gender != "unknown"
+                else ""
+            )
+
+            cast_lines.append(f"- {source}{gender}")
+
+            if e.note:
+                cast_lines.append(f"  Note: {e.note}")
 
         blocks.append(
-            "## Preferred English spellings (use these exact spellings for these names and "
-            "terms; for characters, keep pronouns consistent with the stated gender)\n"
-            + "\n".join(sub)
+            "## Cast (character information — use this for gender, pronouns, "
+            "and character context)\n"
+            + "\n".join(cast_lines)
+        )
+
+    # ------------------------------------------------------------------
+    # Preferred English spellings
+    # ------------------------------------------------------------------
+    if english_only:
+        lines = []
+
+        for e in english_only:
+            line = f"- {e.surface_form}"
+
+            if e.category != "term":
+                line += f" [{e.category}]"
+
+            if e.note:
+                line += f"\n  Note: {e.note}"
+
+            lines.append(line)
+
+        blocks.append(
+            "## Preferred English spellings\n"
+            "Use these exact spellings whenever these English names or terms appear.\n"
+            + "\n".join(lines)
         )
 
     return blocks
@@ -142,17 +188,18 @@ def build_translation_messages(req: TranslationRequest) -> list[dict[str, str]]:
     # blocks: authoritative pairs, and a category/gender-aware preferred-spellings list.
     parts.extend(_format_glossary_blocks(_prompt_glossary_entries(req)))
 
-    ref = req.reference_context.strip()
-    if ref:
-        parts.append(
-            "## Reference context (style/terminology background — DO NOT translate or "
-            f"reproduce)\n{ref}"
-        )
-    else:
-        parts.append(
-            "## Reference context\n(none available — translate from the glossary and "
-            "the raw chapter alone)"
-        )
+    # TODO: Remove the use of refernce_context as we do not use ai to summarize text, now we extract writing style
+    # ref = req.reference_context.strip()
+    # if ref:
+    #     parts.append(
+    #         "## Reference context (style/terminology background — DO NOT translate or "
+    #         f"reproduce)\n{ref}"
+    #     )
+    # else:
+    #     parts.append(
+    #         "## Reference context\n(none available — translate from the glossary and "
+    #         "the raw chapter alone)"
+    #     )
 
     parts.append(
         f"## Raw chapter to translate (source language: {lang})\n"
@@ -237,28 +284,127 @@ def build_extraction_messages(
 
 # --- Glossary pairing prompts -----------------------------------------------
 
+# GLOSSARY_PAIRING_SYSTEM_PROMPT = (
+#     "You align terminology between a source-language novel chapter and its existing "
+#     "English translation. You do NOT translate or re-translate anything.\n"
+#     "\n"
+#     "You are given the raw source chapter and the English translation that was already "
+#     "produced from it. They tell the same story in the same order. Your job is to bind "
+#     "each important recurring source term (character names, places, organizations, titles, "
+#     "skills, key terminology) to the EXACT English spelling that already appears in the "
+#     "translation. Never invent a new romanization or spelling — only use spellings that "
+#     "are actually present in the English text.\n"
+#     "\n"
+#     "Return ONLY a single JSON object, no prose and no code fences, with exactly one key:\n"
+#     '  "pairs": an array of up to 30 objects, each with:\n'
+#     '     "source_term": the term as it appears in the source text (required),\n'
+#     '     "surface_form": the exact English spelling used in the translation (required),\n'
+#     '     "category": one of "character", "title", "term" (default "term"),\n'
+#     '     "gender": one of "male", "female", "unknown" (characters only; else "unknown"),\n'
+#     '     "note": a short optional disambiguator (e.g. "protagonist"), or an empty string.\n'
+#     "\n"
+#     "Only include a pair when you are confident the source term and the English spelling "
+#     "refer to the same entity. Omit anything you cannot pair with a spelling present in the "
+#     "translation. No duplicates. Output JSON only."
+# )
+
 GLOSSARY_PAIRING_SYSTEM_PROMPT = (
     "You align terminology between a source-language novel chapter and its existing "
-    "English translation. You do NOT translate or re-translate anything.\n"
+    "English translation. You do NOT translate, rewrite, summarize, or interpret "
+    "either text.\n"
     "\n"
-    "You are given the raw source chapter and the English translation that was already "
-    "produced from it. They tell the same story in the same order. Your job is to bind "
-    "each important recurring source term (character names, places, organizations, titles, "
-    "skills, key terminology) to the EXACT English spelling that already appears in the "
-    "translation. Never invent a new romanization or spelling — only use spellings that "
-    "are actually present in the English text.\n"
+    "The source chapter and English translation describe the same events. "
+    "Your task is to identify source-language entities and pair them with the "
+    "EXACT English spellings already present in the translation.\n"
     "\n"
-    "Return ONLY a single JSON object, no prose and no code fences, with exactly one key:\n"
-    '  "pairs": an array of up to 30 objects, each with:\n'
-    '     "source_term": the term as it appears in the source text (required),\n'
-    '     "surface_form": the exact English spelling used in the translation (required),\n'
-    '     "category": one of "character", "title", "term" (default "term"),\n'
-    '     "gender": one of "male", "female", "unknown" (characters only; else "unknown"),\n'
-    '     "note": a short optional disambiguator (e.g. "protagonist"), or an empty string.\n'
+    "Never invent a translation, romanization, spelling, title, gender, "
+    "relationship, affiliation, role, or note that is not supported by "
+    "evidence in the provided texts.\n"
     "\n"
-    "Only include a pair when you are confident the source term and the English spelling "
-    "refer to the same entity. Omit anything you cannot pair with a spelling present in the "
-    "translation. No duplicates. Output JSON only."
+    "# CATEGORIES\n"
+    "\n"
+    'Use exactly one of these values for "category":\n'
+    '- "character" — named people\n'
+    '- "title" — honorifics, ranks, and forms of address\n'
+    '- "location" — places, regions, buildings, landmarks, and realms\n'
+    '- "organization" — sects, clans, factions, schools, courts, and groups\n'
+    '- "item" — artifacts, treasures, pills, weapons, techniques, manuals, and named objects\n'
+    '- "term" — other recurring terminology\n'
+    "\n"
+    "# GENDER\n"
+    "\n"
+    "For entities in the \"character\" category, also report the character's gender.\n"
+    "\n"
+    "Gender exists to help future translations maintain pronoun consistency.\n"
+    "\n"
+    "Determine gender ONLY from evidence in the source chapter or English translation:\n"
+    "- gendered pronouns\n"
+    "- explicit descriptions\n"
+    "- gendered titles or forms of address\n"
+    "- clearly stated relationships\n"
+    "\n"
+    "Do NOT infer gender from the name itself.\n"
+    "Do NOT assume the protagonist is male.\n"
+    "\n"
+    'Report exactly one of:\n'
+    '- "female"\n'
+    '- "male"\n'
+    '- "unknown"\n'
+    "\n"
+    "\"unknown\" is the correct answer whenever evidence is absent.\n"
+    "A wrong gender is worse than an unknown gender.\n"
+    "\n"
+    "# NOTES\n"
+    "\n"
+    "The note field is optional.\n"
+    "\n"
+    "Use it only when the text provides a short factual identifier that helps "
+    "identify or distinguish the entity.\n"
+    "\n"
+    "Suitable note content includes:\n"
+    "- roles\n"
+    "- ranks\n"
+    "- occupations\n"
+    "- affiliations\n"
+    "- explicitly stated relationships\n"
+    "\n"
+    "Do NOT include:\n"
+    "- personality traits\n"
+    "- appearance descriptions\n"
+    "- opinions\n"
+    "- power-level assessments\n"
+    "- plot summaries\n"
+    "- speculation\n"
+    "\n"
+    "Keep notes concise.\n"
+    "Leave note as an empty string when no useful factual identifier is available.\n"
+    "\n"
+    "# OUTPUT FORMAT\n"
+    "\n"
+    "Return ONLY a single JSON object with exactly one key:\n"
+    '  "pairs"\n'
+    "\n"
+    'Each element of "pairs" must be:\n'
+    "{\n"
+    '  "source_term": string,\n'
+    '  "surface_form": string,\n'
+    '  "category": "character" | "title" | "location" | "organization" | "item" | "term",\n'
+    '  "gender": "male" | "female" | "unknown",\n'
+    '  "note": string\n'
+    "}\n"
+    "\n"
+    "# EXTRACTION RULES\n"
+    "\n"
+    "1. Use only English spellings that already appear in the translation.\n"
+    "2. Never invent a spelling or romanization.\n"
+    "3. Include only pairs you can confidently align.\n"
+    "4. Omit uncertain pairs.\n"
+    "5. Remove duplicates.\n"
+    "6. Prefer recurring and translation-relevant entities.\n"
+    "7. Preserve the source term exactly as it appears in the source text.\n"
+    "8. Preserve the English spelling exactly as it appears in the translation.\n"
+    "\n"
+    "Output JSON only."
 )
 
 
@@ -282,17 +428,18 @@ def build_glossary_pairing_messages(
     """
     lang = _lang_name(source_lang)
     parts = [
-        f"The source chapter is {lang}; the translation is its English rendering. Pair the "
-        "source terms to the exact English spellings used in the translation, as instructed."
+        f"The source chapter is {lang}; the translation is its English rendering."
     ]
-    if candidates:
-        parts.append(
-            "## Candidate terms (a deterministic pre-pass flagged these as likely recurring "
-            "terms — prioritize pairing them, but add any other clearly recurring entity you "
-            "find. These are hints, not a required list.)\n" + ", ".join(candidates)
-        )
+    # if candidates:
+    #     parts.append(
+    #         "## Candidate terms (a deterministic pre-pass flagged these as likely recurring "
+    #         "terms — prioritize pairing them, but add any other clearly recurring entity you "
+    #         "find. These are hints, not a required list.)\n" + ", ".join(candidates)
+    #     )
     parts.append(f"## Source chapter\n{_RAW_OPEN}\n{raw_text}\n{_RAW_CLOSE}")
-    parts.append("## English translation\n" + output_text)
+    parts.append(f"## English translation\n{_TRANS_OPEN}\n{output_text}\n{_TRANS_CLOSE}")
+    print(GLOSSARY_PAIRING_SYSTEM_PROMPT)
+    print(parts)
     return [
         {"role": "system", "content": GLOSSARY_PAIRING_SYSTEM_PROMPT},
         {"role": "user", "content": "\n\n".join(parts)},

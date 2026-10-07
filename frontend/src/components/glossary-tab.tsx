@@ -19,6 +19,9 @@ const CATEGORY_LABELS: Record<GlossaryCategory, string> = {
   character: "Character",
   title: "Title",
   term: "Term",
+  location: "Location",
+  organization: "Organization",
+  item: "Item"
 };
 
 export function GlossaryTab({
@@ -437,6 +440,9 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
               <SelectItem value="character">Character</SelectItem>
               <SelectItem value="title">Title</SelectItem>
               <SelectItem value="term">Term</SelectItem>
+              <SelectItem value="location">Location</SelectItem>
+              <SelectItem value="organization">Organization</SelectItem>
+              <SelectItem value="item">Item</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -419,6 +419,25 @@ async def extract_translation_glossary(
         model=model,
     )
 
+    # TODO(vNext): Canonicalize duplicate glossary pairs.
+    #
+    # Example:
+    #   天庭 -> Heavenly Court
+    #   天庭 -> Heavenly Courts
+    #
+    # Current behavior:
+    #   Both entries are accepted.
+    #
+    # Desired behavior:
+    #   Choose a single canonical English spelling based on frequency in the
+    #   translated chapter and merge metadata into one entry.
+    #
+    # Priority: Low.
+    # Reason: Requires deterministic post-processing, but does not affect the
+    # correctness of the current translation pipeline.
+
+    print(pairs)
+
     return [
         GlossaryPairSuggestion(
             source_term=p.source_term,

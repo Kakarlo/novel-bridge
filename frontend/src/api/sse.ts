@@ -9,6 +9,8 @@ export interface StreamSseOptions {
   url: string;
   body: unknown;
   signal?: AbortSignal;
+  /** Extra request headers (e.g. the X-LLM-Api-Key BYO-key header). */
+  headers?: Record<string, string>;
   /** Called once with the raw HTTP Response before streaming begins. */
   onResponse?: (res: Response) => void;
 }
@@ -24,6 +26,7 @@ export async function* streamSse<T>({
   url,
   body,
   signal,
+  headers,
   onResponse,
 }: StreamSseOptions): AsyncGenerator<T, void, unknown> {
   const res = await fetch(url, {
@@ -31,6 +34,7 @@ export async function* streamSse<T>({
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...headers,
     },
     body: JSON.stringify(body),
     signal,

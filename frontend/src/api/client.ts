@@ -1,6 +1,7 @@
 // Thin typed fetch wrapper over the NovelBridge REST API.
 // All calls go through the Vite dev proxy (/api -> backend :8000).
 
+import { getCredentials } from "@/hooks/use-credentials";
 import { streamSse } from "./sse";
 import type {
   GlossaryPairSuggestion,
@@ -64,14 +65,39 @@ async function errorMessage(res: Response): Promise<string> {
   return `Request failed (${res.status})`;
 }
 
+// --- bring-your-own-key credential plumbing ---------------------------------
+// The API key goes ONLY in the X-LLM-Api-Key header (never a JSON body/query, so it stays
+// out of logs and URLs). The provider rides as a query param on GET endpoints and inside the
+// `selection` body on translate. These read the live credential store at call time so the
+// latest picker choice is always used.
+
+/** The X-LLM-Api-Key header for the current key, or {} when no key is set. */
+function authHeader(): Record<string, string> {
+  const { apiKey } = getCredentials();
+  return apiKey ? { "X-LLM-Api-Key": apiKey } : {};
+}
+
+/** `?provider=…` suffix for the current provider, or "" when using the server default. */
+function providerQuery(): string {
+  const { provider } = getCredentials();
+  return provider ? `?provider=${encodeURIComponent(provider)}` : "";
+}
+
 export const api = {
   // --- health ---
-  health: () => request<{ status: string; reachable: boolean; engine: string; model: string }>("/health"),
+  // Cred-aware: sends the chosen provider (query) + API key (header) so the status indicator
+  // probes the user's own provider/key, not just the server default. A 401 (missing key) or
+  // 400 (unknown provider) surfaces as an ApiError the caller can treat as "unreachable".
+  health: () =>
+    request<{ status: string; reachable: boolean; engine: string; model?: string }>(`/health${providerQuery()}`, {
+      headers: authHeader(),
+    }),
 
   // --- models ---
-  // GET /api/models → { models, current }. Degrades to an empty `models` list (never errors)
+  // GET /api/models → { models, current }. Cred-aware (provider query + key header) so a BYO
+  // user lists their own provider's models. Degrades to an empty `models` list (never errors)
   // when the engine is unreachable; the picker treats empty as "unavailable".
-  listModels: () => request<ModelsResponse>("/models"),
+  listModels: () => request<ModelsResponse>(`/models${providerQuery()}`, { headers: authHeader() }),
 
   // --- projects ---
   listProjects: () => request<Project[]>("/projects"),
@@ -159,5 +185,8 @@ export const api = {
       url: `${BASE}/projects/${pid}/translate`,
       body,
       signal,
+      // BYO-key: the API key travels in the header; the provider/model are in body.selection
+      // (set by the translate tab from the credential store).
+      headers: authHeader(),
     }),
 };

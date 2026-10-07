@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/api/client";
+import { useCredentials } from "@/hooks/use-credentials";
 
 export interface Health {
   status: string;
   /** Whether the backend could actually reach the LLM engine. */
   reachable: boolean;
   engine: string;
-  model: string;
+  // The backend no longer returns a model from /health (the model picker owns the current
+  // model now). Kept optional for back-compat; ModelStatus derives the model from the picker.
+  model?: string;
 }
 
 export type HealthState =
@@ -24,6 +27,9 @@ const POLL_MS = 60_000;
  * Keeps the last-known engine/model while a refetch is in flight.
  */
 export function useHealth(): HealthState {
+  // Cred-aware: the client sends the chosen provider + key, so health reflects the user's own
+  // provider. Re-probe when either changes (e.g. right after a key is entered).
+  const { provider, apiKey } = useCredentials();
   const [state, setState] = useState<HealthState>({ kind: "loading", data: null });
 
   const check = useCallback(async () => {
@@ -32,7 +38,8 @@ export function useHealth(): HealthState {
       setState({ kind: "ok", data });
     } catch {
       // Keep the last-known data (if any) so the dot can go red without the
-      // engine/model label flickering away.
+      // engine/model label flickering away. A 400/401 (unknown provider / missing key) lands
+      // here too — surfaced as "unreachable" for the indicator.
       setState((prev) => ({ kind: "unreachable", data: prev.data }));
     }
   }, []);
@@ -53,7 +60,8 @@ export function useHealth(): HealthState {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [check]);
+    // Re-run (and re-probe immediately) when the selected provider or key changes.
+  }, [check, provider, apiKey]);
 
   return state;
 }

@@ -96,7 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok" if reachable else "unreachable",
             "reachable": reachable,
             "engine": engine.name,
-            "model": _default_model(settings, provider),
+            # TODO: Remove the _default_model as we now have a picker that allows user to choose one
+            # "model": _default_model(settings, provider),
         }
 
     @app.get("/api/models")

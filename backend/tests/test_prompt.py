@@ -26,6 +26,9 @@ def test_system_prompt_forbids_reproducing_reference():
 
 
 def test_user_message_fences_raw_chapter_last():
+    # reference_context is no longer injected into the translate prompt (it hurt quality —
+    # the project pivoted to a per-project style profile). The raw chapter must still be the
+    # final, clearly fenced block, and the removed reference text must NOT appear.
     msgs = prompt.build_translation_messages(
         _req(reference_context="Summary: a quiet chapter.")
     )
@@ -35,15 +38,19 @@ def test_user_message_fences_raw_chapter_last():
     assert "RAWBODY" in user
     # ...and the raw-chapter section is the last thing in the message.
     assert user.rstrip().endswith(prompt._RAW_CLOSE)
-    # Reference context is present but labeled as non-translatable background.
-    assert "a quiet chapter" in user
-    assert "do not translate" in user.lower()
+    # Reference context is intentionally dropped — it must not leak into the prompt.
+    assert "a quiet chapter" not in user
 
 
-def test_user_message_handles_no_reference():
+def test_user_message_omits_reference_context_section():
+    # With no reference (and none injected anymore), the message carries no reference-context
+    # section at all — just the fenced raw chapter.
     msgs = prompt.build_translation_messages(_req(reference_context=""))
     user = msgs[1]["content"]
-    assert "none available" in user.lower()
+    # No "## Reference context" section header (the instruction text may still mention the
+    # phrase in passing; it's the dedicated block that must be gone).
+    assert "## reference context" not in user.lower()
+    assert user.rstrip().endswith(prompt._RAW_CLOSE)
 
 
 def test_paired_entry_rendered_as_authoritative_pair():
@@ -92,7 +99,11 @@ def test_character_gender_shown_and_titles_grouped():
         ),
     ]
     content = prompt.build_translation_messages(_req(glossary=g))[1]["content"]
-    assert "Fang Yuan (male)" in content
+    # Characters render in a dedicated Cast block with capitalized gender in brackets.
+    assert "## Cast" in content
+    assert "Fang Yuan [Male]" in content
+    # English-only entries also appear in the preferred-spellings block with a category tag
+    # (anything other than the default "term" is labeled).
     assert "[character]" in content
     assert "Senior Brother" in content and "[title]" in content
 

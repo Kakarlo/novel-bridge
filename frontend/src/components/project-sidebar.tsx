@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { langLabel } from "@/lib/format";
 import type { Theme } from "@/hooks/use-theme";
 import type { Project, ProjectCreate, SourceLang } from "@/api/types";
+import { ModelPicker } from "./model-picker";
 
 interface ProjectSidebarProps {
   projects: Project[];
@@ -186,6 +187,7 @@ export function ProjectSidebar({
       {/* Footer: engine/model health + theme toggle. */}
       <div className="flex items-center gap-2 border-t p-3">
         <div className="min-w-0 flex-1">
+          <ModelPicker />
           <ModelStatus />
         </div>
         <Button

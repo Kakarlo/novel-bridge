@@ -134,6 +134,10 @@ class GeminiEngine(TranslationEngine):
         model_used = req.model or self._model
         in_think = False
 
+        for i, msg in enumerate(messages):
+            print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
+            print(msg["content"])
+
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             url = self._model_url(req.model, "streamGenerateContent") + "?alt=sse"
             async with client.stream(

@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS glossary_entries (
   status       TEXT NOT NULL DEFAULT 'candidate'
                  CHECK (status IN ('candidate','approved','rejected')),
   category     TEXT NOT NULL DEFAULT 'term'
-                 CHECK (category IN ('character','title','term')),
+                 CHECK (category IN ('character','title','term','location','organization','item')),
   gender       TEXT CHECK (gender IN ('male','female','unknown')),
   note         TEXT,
   created_at   TEXT NOT NULL,

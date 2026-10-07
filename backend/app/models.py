@@ -243,9 +243,15 @@ class StyleExtractBody(BaseModel):
     ``selection`` carries the optional per-request engine override ({provider, model}),
     same shape as the translate body, so a BYO-key user can run style extraction on their
     own provider. The API key rides on the X-LLM-Api-Key header, never in this body.
+
+    Stateless path (task 23.4c): the IndexedDB backend has no server-side project row, so when
+    it sends ``content`` it ALSO sends ``source_lang`` (the server can't read it from a project)
+    and the route neither reads nor writes a project — it returns the computed style only (see
+    ``StyleProfileResult``). ``source_lang`` is ignored on the DB path (read from the project).
     """
 
     content: str | None = None
+    source_lang: SourceLang | None = None
     selection: "ModelSelection | None" = None
 
     @field_validator("content")
@@ -255,6 +261,19 @@ class StyleExtractBody(BaseModel):
             return None
         v = v.strip()
         return v or None
+
+
+class StyleProfileResult(BaseModel):
+    """Response for POST /projects/{id}/extract-style (task 23.4c).
+
+    The route returns ONLY the computed style string, not the whole ``Project``: the browser
+    (IndexedDB backend) owns the project and persists the style locally, and the API backend
+    just reads ``style_profile`` off this result and persists server-side itself. Returning a
+    narrow result (instead of ``Project``) is what lets the stateless path avoid touching a
+    project row at all.
+    """
+
+    style_profile: str
 
 
 class ModelSelection(BaseModel):
@@ -292,9 +311,59 @@ class GlossaryExtractBody(BaseModel):
     choice the same way (no more provider/model query params). Omitted entirely → the server
     falls back to its configured engine + default model. The API key rides on the
     X-LLM-Api-Key header, never in this body.
+
+    Stateless (local-first) fields — task 23.4c, backward-compatible: the browser (IndexedDB
+    backend) owns the saved translation, so it ships the source + output text in the body
+    instead of the server loading them by ``tid``. Both ``raw_text`` and ``output_text`` are
+    optional:
+      - BOTH provided → the server uses them verbatim and does NO storage read (the stateless
+        path; ``source_lang`` must then be supplied so the deterministic pre-filters know the
+        source language).
+      - either omitted → the server loads the saved translation from storage by ``tid`` as
+        before (the API-storage backend's behavior, unchanged).
     """
 
     selection: "ModelSelection | None" = None
+    raw_text: str | None = None
+    output_text: str | None = None
+    # Source language of ``raw_text`` on the stateless path (the server has no DB row to read
+    # it from). Ignored when loading by ``tid``. Defaults to ``zh`` when the stateless body
+    # omits it.
+    source_lang: SourceLang | None = None
+
+    @field_validator("raw_text", "output_text")
+    @classmethod
+    def text_blank_to_none(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
+class DetectNamesBody(BaseModel):
+    """Body for POST /api/detect-names (task 23.4c).
+
+    The stateless equivalent of ``POST /api/references/{id}/redetect``: pure, offline spaCy
+    proper-noun compute over text the browser (IndexedDB backend) ships in the request, so no
+    storage read/write is needed. spaCy stays server-side (design decision §8.4). Unlike
+    ``redetect`` this endpoint does NO glossary cross-check — it has no project context; the
+    idb client hides already-promoted/rejected names against its local glossary.
+    """
+
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Content must not be empty.")
+        return v.strip()
+
+
+class DetectNamesResponse(BaseModel):
+    """Response for POST /api/detect-names: the deterministically detected proper nouns."""
+
+    detected_names: list[str] = Field(default_factory=list)
 
 
 class TranslateRequest(BaseModel):

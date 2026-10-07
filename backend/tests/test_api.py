@@ -634,3 +634,59 @@ def test_extract_glossary_endpoint(tmp_path):
             assert "surface_form" in p
         # Missing translation -> 404.
         assert c.post("/api/translations/does-not-exist/extract-glossary").status_code == 404
+
+
+def test_detect_names_stateless(client):
+    """POST /api/detect-names returns detected proper nouns from body content, no storage.
+
+    The DB-free twin of /references/{id}/redetect (task 23.4c): the browser ships the text,
+    the server runs the offline detector and returns {detected_names}. No project/reference
+    row is touched, so there's nothing to 404 on.
+    """
+    r = client.post(
+        "/api/detect-names",
+        json={"content": "Lin Feng met Lin Feng's rival in Beijing."},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body["detected_names"], list)
+    # Blank content is rejected (same validator shape as reference content).
+    assert client.post("/api/detect-names", json={"content": "   "}).status_code == 422
+
+
+def test_extract_style_stateless_body(client):
+    """extract-style with content + source_lang analyzes that text WITHOUT a project row.
+
+    Stateless path (task 23.4c): no project is created, yet the route returns a style — it
+    neither reads nor writes a project. Response is {style_profile}, not a Project.
+    """
+    r = client.post(
+        "/api/projects/no-such-project/extract-style",
+        json={"content": "A short punchy chapter. Dialogue was terse.", "source_lang": "zh"},
+    )
+    assert r.status_code == 200
+    assert r.json()["style_profile"]
+
+
+def test_extract_glossary_stateless_body(tmp_path):
+    """extract-glossary accepts raw_text + output_text in the body (no DB read, no tid).
+
+    Backward-compatible stateless path (task 23.4c): both texts supplied → the server pairs
+    them directly, so the {tid} in the path is irrelevant and need not exist in storage.
+    """
+    settings = Settings(nb_engine="mock", nb_db_path=str(tmp_path / "glossary_stateless.db"))
+    with _client_with(settings) as c:
+        r = c.post(
+            "/api/translations/not-a-real-tid/extract-glossary",
+            json={
+                "raw_text": "林风走向北京。北京很大。",
+                "output_text": "Lin Feng walked toward Beijing. Beijing is large.",
+                "source_lang": "zh",
+            },
+        )
+        assert r.status_code == 200
+        pairs = r.json()
+        assert isinstance(pairs, list)
+        for p in pairs:
+            assert "source_term" in p
+            assert "surface_form" in p

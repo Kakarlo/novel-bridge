@@ -130,6 +130,19 @@ export interface GlossaryPairSuggestion {
   note: string | null;
 }
 
+// POST /projects/{id}/extract-style now returns ONLY the computed style (task 23.4c), not the
+// whole Project: the CALLER persists it (the API client via PUT /style; the idb client in its
+// local store). This is what lets the stateless path avoid touching a project row.
+export interface StyleProfileResult {
+  style_profile: string;
+}
+
+// POST /api/detect-names — stateless proper-noun detection (task 23.4c). The DB-free twin of
+// /references/{id}/redetect: ship text, get names back, nothing persisted server-side.
+export interface DetectNamesResponse {
+  detected_names: string[];
+}
+
 export interface TranslateRequest {
   raw_text: string;
   source_lang: SourceLang;

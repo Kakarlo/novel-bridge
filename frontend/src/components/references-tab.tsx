@@ -4,7 +4,7 @@ import { FileText, Pencil, Plus, ScanSearch, Sparkles, Trash2, Wand2, X } from "
 
 import { api, ApiError } from "@/api/client";
 import type { Project, ReferenceChapter } from "@/api/types";
-import { getStorage } from "@/storage";
+import { getStorage, getStorageBackend } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,9 @@ export function ReferencesTab({
   // The project's style profile lives on the project, not the reference — fetched here so
   // the StyleProfilePanel can show/extract/edit it alongside the references it's built from.
   const [styleProfile, setStyleProfile] = useState<string | null>(null);
+  // The source language is needed for the stateless extract-style path (the idb backend has
+  // no server-side project for the server to read it from — task 23.4c).
+  const [sourceLang, setSourceLang] = useState<Project["source_lang"]>(null);
 
   useEffect(() => {
     let active = true;
@@ -44,6 +47,7 @@ export function ReferencesTab({
         if (!active) return;
         setItems(refs);
         setStyleProfile(detail.project.style_profile);
+        setSourceLang(detail.project.source_lang);
       })
       .catch((e) => {
         if (active) toast.error(e instanceof Error ? e.message : "Failed to load");
@@ -135,6 +139,8 @@ export function ReferencesTab({
           <StyleProfilePanel
             projectId={projectId}
             styleProfile={styleProfile}
+            sourceLang={sourceLang}
+            references={items}
             hasReferences={items.length > 0}
             onChanged={(project) => setStyleProfile(project.style_profile)}
           />
@@ -209,6 +215,19 @@ export function ReferencesTab({
   );
 }
 
+// Pick the "newest" reference the same way the backend does: highest chapter_number if any
+// are numbered, else the last uploaded (created_at ASC → last element). Used to feed
+// extract-style a specific chapter so the stateless (idb) path works without a server project.
+function newestReference(references: ReferenceChapter[]): ReferenceChapter | undefined {
+  if (references.length === 0) return undefined;
+  const numbered = references.filter((r) => r.chapter_number != null);
+  if (numbered.length > 0) {
+    return numbered.reduce((a, b) => (b.chapter_number! > a.chapter_number! ? b : a));
+  }
+  // listReferences returns oldest-first, so the last element is the most recently uploaded.
+  return references[references.length - 1];
+}
+
 /**
  * Per-project writing-style profile surface (references-are-for-style pivot). References are
  * human English translations; their value is the TRANSLATION STYLE, extracted by one explicit
@@ -222,11 +241,15 @@ export function ReferencesTab({
 function StyleProfilePanel({
   projectId,
   styleProfile,
+  sourceLang,
+  references,
   hasReferences,
   onChanged,
 }: {
   projectId: string;
   styleProfile: string | null;
+  sourceLang: Project["source_lang"];
+  references: ReferenceChapter[];
   hasReferences: boolean;
   onChanged: (project: Project) => void;
 }) {
@@ -238,8 +261,15 @@ function StyleProfilePanel({
   async function extract() {
     setExtracting(true);
     try {
-      // No content arg → backend analyzes the project's newest reference chapter.
-      const project = await api.extractProjectStyle(projectId);
+      // extract-style now returns ONLY the computed style (task 23.4c); the caller persists it.
+      // The server picks the newest reference on the DB-backed path, but the browser store has
+      // no server-side project, so pass the newest reference's content + source lang explicitly.
+      // Sending content works on BOTH backends (the API server analyzes the given text), so one
+      // code path covers both.
+      const newest = newestReference(references);
+      const { style_profile } = await api.extractProjectStyle(projectId, newest?.content, sourceLang);
+      // Persist through the active store (server-side on the API backend; local on idb).
+      const project = await getStorage().updateProjectStyle(projectId, style_profile);
       onChanged(project);
       toast.success("Style profile extracted");
     } catch (e) {
@@ -253,7 +283,7 @@ function StyleProfilePanel({
     if (!draft.trim()) return;
     setSaving(true);
     try {
-      const project = await api.setProjectStyle(projectId, draft.trim());
+      const project = await getStorage().updateProjectStyle(projectId, draft.trim());
       onChanged(project);
       setEditing(false);
       toast.success("Style profile saved");
@@ -266,7 +296,7 @@ function StyleProfilePanel({
 
   async function clear() {
     try {
-      const project = await api.clearProjectStyle(projectId);
+      const project = await getStorage().updateProjectStyle(projectId, null);
       onChanged(project);
       toast.success("Style profile cleared");
     } catch (e) {
@@ -487,7 +517,21 @@ function ReferenceReader({
   async function redetect() {
     try {
       setRedetecting(true);
-      const updated = await api.redetectReferenceNames(reference.id);
+      let updated: ReferenceChapter;
+      if (getStorageBackend() === "idb") {
+        // Stateless path (task 23.4c): compute names from text via /detect-names, then persist
+        // locally. Replicate the backend's glossary cross-check so already-resolved names
+        // (promoted/rejected into the glossary) don't resurface as chips.
+        const [{ detected_names }, glossary] = await Promise.all([
+          api.detectNames(reference.content),
+          getStorage().listGlossary(projectId),
+        ]);
+        const inGlossary = new Set(glossary.map((e) => e.surface_form.toLowerCase()));
+        const filtered = detected_names.filter((n) => !inGlossary.has(n.toLowerCase()));
+        updated = await getStorage().setReferenceDetectedNames(reference.id, filtered);
+      } else {
+        updated = await api.redetectReferenceNames(reference.id);
+      }
       onUpdated(updated);
       const n = updated.detected_names.length;
       toast.success(`Redetected names (${n} found)`);

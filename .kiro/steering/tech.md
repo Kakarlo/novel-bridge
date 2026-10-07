@@ -78,6 +78,25 @@ and client disconnect.
   client persists the result client-side per 23.4a). The API-storage frontend sends none of
   these, so its behavior is unchanged (DB load + server auto-save, non-null `translation_id`).
   The `{id}` path segment and the pure-CRUD routes remain for now; dropping them is task 23.4e.
+- `POST /api/projects/{id}/extract-style` — LLM style extraction. **Returns only
+  `{style_profile}`** (NOT the whole `Project`, changed in task 23.4c) so the CALLER persists
+  it. Body (optional): `content` (analyze this pasted chapter), `source_lang` (`zh|ja`, used
+  only with `content`; defaults `zh`), `selection` ({provider, model}). Two paths: `content`
+  present → **stateless**, no project read/write (the idb client sends the newest reference's
+  `content` + `source_lang` and persists the style locally); `content` omitted → DB-backed,
+  reads the project's newest reference + its `source_lang` and **persists server-side** (API
+  backend). 502 on engine failure/empty; 404 only on the DB path (project/references missing).
+- `POST /api/translations/{tid}/extract-glossary` — LLM-paired glossary extraction, returns
+  `GlossaryPairSuggestion[]`. Body (optional, task 23.4c, backward-compatible): `raw_text` +
+  `output_text` (+ `source_lang`, default `zh`) → **stateless**, both present means the server
+  pairs them verbatim with **no DB read** (so `{tid}` need not exist); omitted → load the saved
+  translation by `tid` as before (404 when missing). Also carries `selection`.
+- `POST /api/detect-names` — **new (task 23.4c)**, stateless proper-noun detection: body
+  `{content}` → `{detected_names: string[]}`. Pure offline spaCy compute (design §8.4), no
+  storage, no engine, **no glossary cross-check** (it has no project context). The DB-free twin
+  of `/references/{refId}/redetect`; the idb client uses it at reference upload (populating
+  `detected_names`) and on Redetect, filtering against its local glossary itself. 422 on blank
+  content.
 - `GET /api/projects/{id}/translations`; `GET /api/translations/{tid}`
 - `GET /api/translations/{tid}/matches` — re-run occurrence detection against a saved
   translation using the project's **current** glossary; returns `TermMatch[]` (200), 404 when

@@ -33,6 +33,12 @@ export class ApiStorageService implements StorageService {
   deleteProject(id: string): Promise<void> {
     return api.deleteProject(id);
   }
+  updateProjectStyle(id: string, styleProfile: string | null): Promise<Project> {
+    // The server owns the project row on this backend, so persist through the REST surface:
+    // a null clears the style, a string sets it. (The style value itself was computed by the
+    // stateless /extract-style endpoint, which no longer persists — task 23.4c.)
+    return styleProfile === null ? api.clearProjectStyle(id) : api.setProjectStyle(id, styleProfile);
+  }
 
   // --- references ---
   listReferences(projectId: string): Promise<ReferenceChapter[]> {
@@ -43,6 +49,12 @@ export class ApiStorageService implements StorageService {
   }
   deleteReference(refId: string): Promise<void> {
     return api.deleteReference(refId);
+  }
+  // The API backend recomputes + persists detected names server-side via redetect, so there's
+  // no endpoint to set an arbitrary client-supplied list. The references tab calls
+  // api.redetectReferenceNames directly on this backend, never this method.
+  setReferenceDetectedNames(): Promise<ReferenceChapter> {
+    return Promise.reject(new Error("The API backend sets detected names server-side via redetect, not from a list."));
   }
   resolveReferenceTerm(refId: string, term: string): Promise<ReferenceChapter> {
     return api.resolveReferenceTerm(refId, term);

@@ -54,11 +54,18 @@ export interface StorageService {
   createProject(input: ProjectCreate): Promise<Project>;
   getProject(id: string): Promise<ProjectDetail>;
   deleteProject(id: string): Promise<void>;
+  // Persist a project's writing-style profile (null clears it). The style itself is computed
+  // by the stateless POST /extract-style compute endpoint (which no longer persists — task
+  // 23.4c); the CALLER saves the result here. Returns the updated project.
+  updateProjectStyle(id: string, styleProfile: string | null): Promise<Project>;
 
   // --- references ---
   listReferences(projectId: string): Promise<ReferenceChapter[]>;
   addReference(projectId: string, input: ReferenceCreate): Promise<ReferenceChapter>;
   deleteReference(refId: string): Promise<void>;
+  // Persist refreshed proper-noun detections for a reference (names come from the stateless
+  // POST /detect-names compute endpoint — task 23.4c). Returns the updated reference.
+  setReferenceDetectedNames(refId: string, names: string[]): Promise<ReferenceChapter>;
   // Remove a resolved suggestion (after promote/reject) from a reference's detected pool so it
   // leaves the chips and won't be resurfaced.
   resolveReferenceTerm(refId: string, term: string): Promise<ReferenceChapter>;

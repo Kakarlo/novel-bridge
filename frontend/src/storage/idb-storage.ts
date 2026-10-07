@@ -9,12 +9,15 @@
 //     candidate_terms
 //   • project counts come from the three child stores
 //
-// Deliberate step-2 scope: references are stored with detected_names=[] and chapter_number=null.
-// The spaCy name detector and chapter-number parse are backend compute (design §5); wiring the
-// browser store to those compute endpoints is step 4. Everything else is fully local + offline.
+// Name detection is wired to the stateless backend compute endpoint (task 23.4c): addReference
+// calls POST /api/detect-names to populate detected_names at upload (spaCy stays server-side,
+// design §8.4), and setReferenceDetectedNames persists a refreshed list on Redetect. Detection
+// degrades gracefully — if the compute endpoint is unreachable the reference still saves with
+// detected_names=[]. chapter_number parsing remains backend-only (left null here) until wired.
 
 import Dexie, { type Table } from "dexie";
 
+import { api } from "@/api/client";
 import type {
   GlossaryCreate,
   GlossaryEntry,
@@ -106,6 +109,14 @@ export class IndexedDbStorage implements StorageService {
     );
   }
 
+  async updateProjectStyle(id: string, styleProfile: string | null): Promise<Project> {
+    const project = await this.db.projects.get(id);
+    if (!project) throw new Error("Project not found");
+    const updated: Project = { ...project, style_profile: styleProfile };
+    await this.db.projects.put(updated);
+    return updated;
+  }
+
   // --- references ---
   async listReferences(projectId: string): Promise<ReferenceChapter[]> {
     const all = await this.db.references.where("project_id").equals(projectId).toArray();
@@ -113,6 +124,16 @@ export class IndexedDbStorage implements StorageService {
   }
 
   async addReference(projectId: string, input: ReferenceCreate): Promise<ReferenceChapter> {
+    // Populate detected_names at upload via the stateless compute endpoint (task 23.4c), so
+    // the "Detected names" chips work on the browser store just like the API backend. spaCy
+    // stays server-side (design §8.4). Detection is best-effort: if the endpoint is
+    // unreachable the reference still saves with detected_names=[] (and Redetect can retry).
+    let detectedNames: string[] = [];
+    try {
+      detectedNames = (await api.detectNames(input.content)).detected_names;
+    } catch {
+      /* detection unavailable — save the reference anyway, names can be redetected later */
+    }
     const ref: ReferenceChapter = {
       id: newId(),
       project_id: projectId,
@@ -122,7 +143,7 @@ export class IndexedDbStorage implements StorageService {
       chapter_number: null,
       summary: null,
       candidate_terms: [],
-      detected_names: [],
+      detected_names: detectedNames,
     };
     await this.db.references.add(ref);
     return ref;
@@ -130,6 +151,14 @@ export class IndexedDbStorage implements StorageService {
 
   async deleteReference(refId: string): Promise<void> {
     await this.db.references.delete(refId);
+  }
+
+  async setReferenceDetectedNames(refId: string, names: string[]): Promise<ReferenceChapter> {
+    const ref = await this.db.references.get(refId);
+    if (!ref) throw new Error("Reference not found");
+    const updated: ReferenceChapter = { ...ref, detected_names: names };
+    await this.db.references.put(updated);
+    return updated;
   }
 
   async resolveReferenceTerm(refId: string, term: string): Promise<ReferenceChapter> {

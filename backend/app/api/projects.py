@@ -13,6 +13,8 @@ from app.deps import (
 )
 from app.engines.base import TranslationEngine
 from app.models import (
+    DetectNamesBody,
+    DetectNamesResponse,
     GlossaryCreate,
     GlossaryEntry,
     GlossaryExtractBody,
@@ -26,6 +28,7 @@ from app.models import (
     ResolveTermBody,
     StyleExtractBody,
     StyleProfileBody,
+    StyleProfileResult,
     TermMatch,
     Translation,
 )
@@ -76,7 +79,7 @@ def delete_project(pid: str, store: StorageService = Depends(get_storage)):
 
 
 # --- style profile (per-project, task 3) ---
-@router.post("/projects/{pid}/extract-style", response_model=Project)
+@router.post("/projects/{pid}/extract-style", response_model=StyleProfileResult)
 async def extract_project_style(
     pid: str,
     body: StyleExtractBody | None = None,
@@ -85,29 +88,29 @@ async def extract_project_style(
     settings: Settings = Depends(get_settings),
     api_key: str | None = Depends(get_request_api_key),
 ):
-    """Extract a writing-style profile from reference content and store it on the project.
+    """Extract a writing-style profile from reference content and return it.
 
     References are human English translations — their real value is the TRANSLATION STYLE.
     This is the primary AI pass on references, replacing the old per-reference summary +
     candidate-terms pass. Runs a single LLM call that characterizes the prose (register,
-    rhythm, dialogue, honorific handling) and stores the result on the project, where it's
-    injected into every translation prompt.
+    rhythm, dialogue, honorific handling); the style is injected into every translation prompt.
 
-    Source of the sample text:
-    - ``body.content`` when provided (analyze a specific pasted chapter), else
-    - the project's NEWEST reference chapter (by chapter_number, then upload order).
+    Returns only the computed style (``StyleProfileResult``), not the whole ``Project``: the
+    CALLER persists it (the API-storage client via ``PUT /style``; the IndexedDB client in its
+    local store). This is what makes the stateless path (task 23.4c) possible.
 
-    Using one chapter keeps the context small and reliable for weak local models. The user
-    picks which chapter to extract from (default: most recent). A multi-chapter merge
-    strategy is a future follow-up.
+    Two paths (backward-compatible):
+    - **Stateless** (``body.content`` provided): analyze that pasted chapter; the server does
+      NOT read or write any project row. ``body.source_lang`` names the source language
+      (defaults to ``zh``) since there's no project to read it from. Used by the IndexedDB
+      backend, which has no server-side project.
+    - **DB-backed** (no ``content``): fall back to the project's NEWEST reference chapter (by
+      chapter_number, then upload order) and read ``source_lang`` from the project. 404 if the
+      project is missing or has no references to analyze.
 
-    502 if the engine extraction fails or yields nothing; 404 if the project is missing or
-    has no references to analyze.
+    Using one chapter keeps the context small and reliable for weak local models. A
+    multi-chapter merge strategy is a future follow-up. 502 if extraction fails or is empty.
     """
-    project = store.get_project(pid)
-    if not project:
-        raise HTTPException(404, "Project not found")
-
     # Per-request engine resolution (BYO-key). selection.{provider, model} from the body,
     # key from the X-LLM-Api-Key header; falls back to the env/injected engine otherwise.
     sel = body.selection if body else None
@@ -119,8 +122,15 @@ async def extract_project_style(
         fallback=fallback_engine,
     )
 
-    sample = (body.content.strip() if body and body.content else "")
-    if not sample:
+    sample = body.content.strip() if body and body.content else ""
+    if sample:
+        # Stateless path: no project read/write; source lang comes from the body (default zh).
+        lang = (body.source_lang if body else None) or "zh"
+    else:
+        # DB-backed path: read the project (for source lang) and its newest reference.
+        project = store.get_project(pid)
+        if not project:
+            raise HTTPException(404, "Project not found")
         refs = store.list_references(pid)
         if not refs:
             raise HTTPException(404, "No reference content to analyze")
@@ -131,8 +141,8 @@ async def extract_project_style(
         else:
             newest = refs[-1]  # last uploaded (storage returns created_at ASC)
         sample = newest.content
+        lang = project.source_lang or "zh"
 
-    lang = project.source_lang or "zh"
     try:
         style = await engine.extract_style(sample, lang)
     except Exception as exc:  # noqa: BLE001
@@ -140,10 +150,12 @@ async def extract_project_style(
     if not style.strip():
         raise HTTPException(502, "Style extraction returned nothing")
 
-    updated = store.update_project_style(pid, style)
-    if not updated:
-        raise HTTPException(404, "Project not found")
-    return updated
+    # DB-backed path persists server-side so the API client gets the stored project state;
+    # the stateless path persists in the browser (the caller does it).
+    if not (body and body.content):
+        if not store.update_project_style(pid, style):
+            raise HTTPException(404, "Project not found")
+    return StyleProfileResult(style_profile=style)
 
 
 @router.put("/projects/{pid}/style", response_model=Project)
@@ -226,6 +238,19 @@ def redetect_reference_names(
     if not updated:
         raise HTTPException(404, "Reference not found")
     return updated
+
+
+@router.post("/detect-names", response_model=DetectNamesResponse)
+def detect_names(body: DetectNamesBody):
+    """Stateless proper-noun detection (task 23.4c) — the DB-free twin of ``redetect``.
+
+    Pure offline spaCy compute over text the caller ships in the body; persists nothing. The
+    IndexedDB backend uses this at reference upload (and on Redetect) so ``detected_names``
+    works client-side without a server-side reference row. No glossary cross-check here (no
+    project context) — the idb client filters already-resolved names against its local
+    glossary.
+    """
+    return DetectNamesResponse(detected_names=extract_proper_nouns(body.content))
 
 
 @router.post("/references/{ref_id}/resolve-term", response_model=ReferenceChapter)
@@ -389,10 +414,27 @@ async def extract_translation_glossary(
     Returns ``GlossaryPairSuggestion[]`` for the user to confirm; nothing is written
     to the glossary automatically. The frontend calls ``POST /glossary`` with the chosen
     pairs. ``[]`` on any engine error (degraded, never crashes).
+
+    Source of the text (task 23.4c, backward-compatible):
+    - ``body.raw_text`` AND ``body.output_text`` both present → use them verbatim, NO storage
+      read (the stateless path for the IndexedDB backend, which owns the saved translation).
+      ``body.source_lang`` names the source language (defaults to ``zh``).
+    - otherwise → load the saved translation from storage by ``tid`` (the API backend's
+      behavior, unchanged); 404 when it's missing.
     """
-    tr = store.get_translation(tid)
-    if not tr:
-        raise HTTPException(404, "Translation not found")
+    # Stateless path: both texts supplied in the body → skip the DB entirely.
+    stateless = bool(body and body.raw_text and body.output_text)
+    if stateless:
+        raw_text = body.raw_text  # type: ignore[union-attr]
+        output_text = body.output_text  # type: ignore[union-attr]
+        source_lang = (body.source_lang if body else None) or "zh"
+    else:
+        tr = store.get_translation(tid)
+        if not tr:
+            raise HTTPException(404, "Translation not found")
+        raw_text = tr.raw_text
+        output_text = tr.output_text
+        source_lang = tr.source_lang
 
     # Per-request engine resolution (BYO-key). selection.{provider, model} from the body
     # (unified pattern — same as translate / extract-style); key from the X-LLM-Api-Key
@@ -411,13 +453,13 @@ async def extract_translation_glossary(
     # Build candidate hints from deterministic pre-filters.
     candidates: list[str] = []
     if settings.nb_source_terms:
-        candidates.extend(extract_source_terms(tr.raw_text, tr.source_lang))
-    candidates.extend(extract_proper_nouns(tr.output_text))
+        candidates.extend(extract_source_terms(raw_text, source_lang))
+    candidates.extend(extract_proper_nouns(output_text))
 
     pairs = await engine.extract_glossary(
-        raw_text=tr.raw_text,
-        output_text=tr.output_text,
-        source_lang=tr.source_lang,
+        raw_text=raw_text,
+        output_text=output_text,
+        source_lang=source_lang,
         candidates=candidates or None,
         model=model,
     )

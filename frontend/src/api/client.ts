@@ -4,6 +4,7 @@
 import { getCredentials } from "@/hooks/use-credentials";
 import { streamSse } from "./sse";
 import type {
+  DetectNamesResponse,
   GlossaryPairSuggestion,
   ModelsResponse,
   GlossaryCreate,
@@ -15,6 +16,8 @@ import type {
   ProjectDetail,
   ReferenceChapter,
   ReferenceCreate,
+  SourceLang,
+  StyleProfileResult,
   TermMatch,
   TranslateEvent,
   TranslateRequest,
@@ -117,15 +120,23 @@ export const api = {
   deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
 
   // --- per-project style profile (task 3) ---
-  // Extract a writing-style profile (LLM call). With no body, analyzes the project's newest
-  // reference chapter; pass { content } to analyze a specific pasted chapter instead.
-  // Returns the updated Project (style_profile set). 502 on engine failure, 404 if no content.
+  // Extract a writing-style profile (LLM call). Returns ONLY the computed style
+  // ({ style_profile }, task 23.4c) — the CALLER persists it (the API-storage path via
+  // setProjectStyle; the idb path in its local store). With no body, the server analyzes the
+  // project's newest reference chapter (DB-backed path, API backend). The idb backend has no
+  // server-side project, so it passes `content` (the newest reference text from its local
+  // store) AND `source_lang` (the server can't read it from a project on that path).
+  // 502 on engine failure, 404 if no content on the DB-backed path.
   // Cred-aware: sends the chosen provider/model as `selection` in the body + the API key on
   // the X-LLM-Api-Key header, so style extraction uses the user's model, not the server default.
-  extractProjectStyle: (id: string, content?: string) => {
+  extractProjectStyle: (id: string, content?: string, sourceLang?: SourceLang | null) => {
     const selection = engineSelection();
-    const payload = { ...(content ? { content } : {}), ...(selection ? { selection } : {}) };
-    return request<Project>(`/projects/${id}/extract-style`, {
+    const payload = {
+      ...(content ? { content } : {}),
+      ...(content && sourceLang ? { source_lang: sourceLang } : {}),
+      ...(selection ? { selection } : {}),
+    };
+    return request<StyleProfileResult>(`/projects/${id}/extract-style`, {
       method: "POST",
       headers: authHeader(),
       // Send a body only when there's something to send; an empty object is fine too, but
@@ -147,9 +158,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteReference: (refId: string) => request<void>(`/references/${refId}`, { method: "DELETE" }),
-  // Re-run ONLY the offline name detector (no AI) to refresh detected_names quickly.
+  // Re-run ONLY the offline name detector (no AI) to refresh detected_names quickly. Reads +
+  // writes the server-side reference row (API backend). The idb backend uses detectNames()
+  // below instead and persists via its local store.
   redetectReferenceNames: (refId: string) =>
     request<ReferenceChapter>(`/references/${refId}/redetect`, { method: "POST" }),
+  // Stateless proper-noun detection (task 23.4c): ship text, get { detected_names } back,
+  // nothing persisted server-side. Pure spaCy compute. Used by the idb backend at reference
+  // upload and on Redetect (the browser owns the reference row and persists the result).
+  detectNames: (content: string) =>
+    request<DetectNamesResponse>(`/detect-names`, { method: "POST", body: JSON.stringify({ content }) }),
   // Remove a resolved suggestion (after promote/reject) from a reference's pools so it
   // leaves the chips and won't be resurfaced by redetect.
   resolveReferenceTerm: (refId: string, term: string) =>
@@ -194,12 +212,19 @@ export const api = {
   // replaces the old deterministic term-alignment endpoint.
   // Cred-aware: sends the chosen provider/model as `selection` in the body (unified pattern)
   // + the API key on the X-LLM-Api-Key header, so pairing uses the user's model.
-  translationExtractGlossary: (tid: string) => {
+  // Stateless (task 23.4c): pass `texts` to ship the source + output in the body (the idb
+  // backend owns the saved translation, so the server reads nothing by `tid`); omit it and the
+  // server loads the translation by `tid` (API backend, unchanged).
+  translationExtractGlossary: (
+    tid: string,
+    texts?: { raw_text: string; output_text: string; source_lang: SourceLang }
+  ) => {
     const selection = engineSelection();
+    const payload = { ...(selection ? { selection } : {}), ...(texts ?? {}) };
     return request<GlossaryPairSuggestion[]>(`/translations/${tid}/extract-glossary`, {
       method: "POST",
       headers: authHeader(),
-      body: selection ? JSON.stringify({ selection }) : undefined,
+      body: Object.keys(payload).length ? JSON.stringify(payload) : undefined,
     });
   },
 

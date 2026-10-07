@@ -289,9 +289,23 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
             API backend defaults `save=true`, unchanged. Frontend sends glossary + style_profile +
             `save:false` only on the idb backend. 185 backend tests pass (3 new stateless cases);
             frontend builds clean.
-      - [ ] 23.4c `extract-style` takes the reference `content` in the body; `extract-glossary`
+      - [x] 23.4c `extract-style` takes the reference `content` in the body; `extract-glossary`
             takes `raw_text` + `output_text`; add `POST /api/detect-names` taking `{content}`
-            (spaCy stays server-side). Frontend sends content from the local store.
+            (spaCy stays server-side). Frontend sends content from the local store. DONE:
+            `extract-style` now returns ONLY `{style_profile}` (not the whole `Project`) so the
+            CALLER persists it — the stateless path (idb sends `content` + `source_lang`) reads
+            and writes NO project row; the DB-backed path (no `content`) still reads the newest
+            reference + persists server-side. `extract-glossary` gained optional
+            `raw_text`/`output_text`/`source_lang` (both texts present → verbatim, no DB read;
+            else load by `tid` as before). New `POST /api/detect-names` ({content} →
+            {detected_names}, pure spaCy, no storage, no glossary cross-check). Frontend: added
+            `updateProjectStyle` + `setReferenceDetectedNames` to the StorageService interface
+            (idb implements both; the API impl persists style via PUT/DELETE /style and rejects
+            the detected-names setter since that backend redetects server-side). The idb store
+            populates `detected_names` at upload via `/detect-names`; the references tab's
+            Extract style, Redetect, and style save/clear all go through the active store so
+            both backends work. 188 backend tests pass (3 new stateless cases); frontend builds
+            clean. (23.4d restores client-side term review on idb; 23.4e removes the CRUD routes.)
       - [ ] 23.4d Decide per deterministic pass (term_match, pronoun/source-term) whether it
             moves to the client as plain TS or stays a stateless compute endpoint; restore
             client-side term review so the review panel works on the idb backend.

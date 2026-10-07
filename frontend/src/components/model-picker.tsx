@@ -38,6 +38,21 @@ export function ModelPicker() {
   const activeModelLabel = creds.model || current || "default";
   const activeProviderLabel = PROVIDERS.find((p) => p.id === activeProviderId)?.label ?? activeProviderId;
 
+  // Warn on refresh/close ONLY while an API key is set — the key is memory-only, so reloading
+  // loses it (user must re-paste). This is scoped to the key's lifetime; it is deliberately
+  // separate from the translate/project-switch guardrail (use-active-stream), which concerns a
+  // live stream, not the key. No key set → no prompt.
+  const hasKeySet = creds.apiKey.trim().length > 0;
+  useEffect(() => {
+    if (!hasKeySet) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // triggers the browser's native "Leave site?" prompt
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasKeySet]);
+
   return (
     <>
       {/* The health status (dot + model + engine) IS the picker trigger — one clickable row

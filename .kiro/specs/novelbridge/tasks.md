@@ -327,6 +327,17 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
     - [ ] 23.5 Local-model access from the hosted app + the Ollama-config-in-UI fields + the
           user guide with the security warnings (design §6/§9). Decided: browser → `localhost`
           (simple) and LAN server (advanced); no tunnels.
+          DONE (task 23.5): custom Ollama server URL field added to the model picker dialog
+          (always shown when Ollama is selected). `Credentials` gained `ollamaUrl` (persisted
+          in localStorage, not sensitive). `engineSelection()` includes `ollama_base_url` in
+          the body `selection` on all LLM endpoints; `providerQuery()` includes it on the GET
+          health/models query params. Backend: `ModelSelection` gained `ollama_base_url`; the
+          factory's `get_engine_for_request` and `resolve_request_engine` accept it and
+          substitute it for `settings.ollama_base_url` when present. The health and models
+          routes gained an `ollama_base_url` query param so the status indicator probes the
+          user's own Ollama. AWS deployment files added: `backend/Dockerfile`,
+          `backend/.dockerignore`, and `DEPLOYMENT.md` (EB + S3/CloudFront guide, CORS setup,
+          Ollama CORS instructions, cost estimate). Frontend build + 189 backend tests pass.
 
 ### Shipped post-PoC extras (not in the original plan)
 

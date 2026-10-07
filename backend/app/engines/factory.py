@@ -60,6 +60,7 @@ def get_engine_for_request(
     model: str | None,
     settings: Settings,
     fallback: TranslationEngine | None = None,
+    ollama_base_url: str | None = None,
 ) -> TranslationEngine:
     """Resolve the engine for a SINGLE request from caller-supplied credentials.
 
@@ -119,15 +120,16 @@ def get_engine_for_request(
             return _env_engine()
         if requested == "mock":
             return MockEngine()
-        # ollama requested (possibly with a per-request model). Build from env connection
-        # settings; a per-call model still overrides via TranslationRequest.model, so we
-        # keep the configured default here.
+        # ollama requested (possibly with a per-request model or custom base_url).
+        # Build from env connection settings, overriding base_url when the client supplied
+        # one (task 23.5: hosted users set their local Ollama URL in the picker).
         if not settings.ollama_base_url or not settings.ollama_model:
             raise EngineConfigError(
                 "Ollama requires OLLAMA_BASE_URL and OLLAMA_MODEL to be set."
             )
+        effective_base_url = (ollama_base_url or "").strip() or settings.ollama_base_url
         return OllamaEngine(
-            base_url=settings.ollama_base_url,
+            base_url=effective_base_url,
             model=model or settings.ollama_model,
             num_ctx=settings.ollama_num_ctx,
             num_thread=settings.ollama_num_thread,

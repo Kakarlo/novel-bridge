@@ -24,9 +24,11 @@ import { ModelStatus } from "@/components/model-status";
  *
  * The toolbar shows a compact button with the active provider/model; clicking it opens a
  * dialog where the user picks a provider, pastes their API key (for cloud providers), and
- * chooses a model. All of it is backed by the credential store (use-credentials): the key is
- * session-only (never persisted to disk), the provider/model choice is remembered. Translate /
- * health / models all read the same store, so a change here takes effect immediately.
+ * chooses a model. For Ollama the user can also set a custom server URL (task 23.5) so a
+ * hosted-app user can point to their own local instance instead of the server's configured
+ * address. All of it is backed by the credential store (use-credentials): the key is
+ * session-only (never persisted to disk), the provider/model/ollamaUrl choice is remembered.
+ * Translate / health / models all read the same store, so a change here takes effect immediately.
  */
 export function ModelPicker() {
   const creds = useCredentials();
@@ -39,10 +41,6 @@ export function ModelPicker() {
   const activeModelLabel = creds.model || current || "default";
   const activeProviderLabel = PROVIDERS.find((p) => p.id === activeProviderId)?.label ?? activeProviderId;
 
-  // Warn on refresh/close ONLY while an API key is set — the key is memory-only, so reloading
-  // loses it (user must re-paste). This is scoped to the key's lifetime; it is deliberately
-  // separate from the translate/project-switch guardrail (use-active-stream), which concerns a
-  // live stream, not the key. No key set → no prompt.
   // Warn on refresh/close while ANY provider has a key set (not just the active one) — the
   // key is memory-only, so a reload loses it. Routed through the shared unload guard so it
   // and the live-stream warning share one listener / one native prompt.
@@ -71,6 +69,7 @@ export function ModelPicker() {
         apiKey={creds.apiKey}
         selectedModel={creds.model}
         serverDefaultModel={current}
+        ollamaUrl={creds.ollamaUrl}
       />
     </>
   );
@@ -84,6 +83,7 @@ interface ProviderDialogProps {
   apiKey: string;
   selectedModel: string;
   serverDefaultModel: string;
+  ollamaUrl: string;
 }
 
 function ProviderDialog({
@@ -94,28 +94,28 @@ function ProviderDialog({
   apiKey,
   selectedModel,
   serverDefaultModel,
+  ollamaUrl,
 }: ProviderDialogProps) {
-  // Local draft of the key so typing doesn't re-probe on every keystroke; committed on blur /
-  // "Use key". The provider/model selects commit immediately (cheap, no network per char).
+  // Local drafts so typing doesn't re-probe on every keystroke; committed on blur / Enter.
+  // Provider/model selects commit immediately (cheap, no network per char).
   const [keyDraft, setKeyDraft] = useState(apiKey);
+  const [urlDraft, setUrlDraft] = useState(ollamaUrl);
   const [showKey, setShowKey] = useState(false);
 
-  // Keep the draft in sync with the stored key when the dialog reopens or the active provider
-  // changes. Switching provider clears the stored key (a key is provider-specific), so the
-  // draft must follow — otherwise the previous provider's key would linger in the input.
+  // Keep drafts in sync when the dialog reopens or the active provider changes. Switching
+  // provider clears the stored key, so the draft must follow.
   useEffect(() => {
-    if (open) setKeyDraft(apiKey);
-  }, [open, apiKey, activeProviderId]);
+    if (open) {
+      setKeyDraft(apiKey);
+      setUrlDraft(ollamaUrl);
+    }
+  }, [open, apiKey, activeProviderId, ollamaUrl]);
 
   const needsKey = providerNeedsKey(activeProviderId);
   const hasKey = apiKey.trim().length > 0;
 
   function chooseProvider(id: string) {
     if (id === activeProviderId) return;
-    // Switch provider + reset the model to that provider's default (empty = default). The
-    // store swaps in THIS provider's remembered key (or empty) — kept per provider for the
-    // life of the tab, so moving away and back doesn't lose a key. The keyDraft sync effect
-    // (keyed on activeProviderId) follows.
     setCredentials({ provider: id, model: "" });
   }
 
@@ -126,6 +126,11 @@ function ProviderDialog({
   function commitKey() {
     const next = keyDraft.trim();
     if (next !== apiKey) setCredentials({ apiKey: next });
+  }
+
+  function commitUrl() {
+    const next = urlDraft.trim();
+    if (next !== ollamaUrl) setCredentials({ ollamaUrl: next });
   }
 
   return (
@@ -160,6 +165,31 @@ function ProviderDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Ollama URL — always shown when Ollama is selected (task 23.5). Users on the
+              hosted app set this to their own local server; self-hosters can override the
+              port or address without changing the server env. Leave blank = server default. */}
+          {activeProviderId === "ollama" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ollama-url-input">Ollama server URL</Label>
+              <Input
+                id="ollama-url-input"
+                type="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="http://localhost:11434"
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                onBlur={commitUrl}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitUrl();
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {ollamaUrl ? `Using: ${ollamaUrl}` : "Leave blank to use the server's configured Ollama address."}
+              </p>
+            </div>
+          )}
 
           {/* API key — only for cloud providers */}
           {needsKey && (

@@ -74,12 +74,14 @@ def translate(
     # and falls back to the env-configured/test-injected engine when no creds are supplied.
     requested_provider = body.selection.provider if body.selection else None
     requested_model = body.selection.model if body.selection else None
+    requested_ollama_url = body.selection.ollama_base_url if body.selection else None
     engine = resolve_request_engine(
         provider=requested_provider,
         model=requested_model,
         api_key=api_key,
         settings=settings,
         fallback=fallback_engine,
+        ollama_base_url=requested_ollama_url,
     )
 
     # --- Stateless context resolution (task 23.4b) -----------------------------

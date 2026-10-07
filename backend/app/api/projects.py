@@ -120,6 +120,7 @@ async def extract_project_style(
         api_key=api_key,
         settings=settings,
         fallback=fallback_engine,
+        ollama_base_url=sel.ollama_base_url if sel else None,
     )
 
     sample = body.content.strip() if body and body.content else ""
@@ -448,6 +449,7 @@ async def extract_translation_glossary(
         api_key=api_key,
         settings=settings,
         fallback=fallback_engine,
+        ollama_base_url=sel.ollama_base_url if sel else None,
     )
 
     # Build candidate hints from deterministic pre-filters.

@@ -293,8 +293,14 @@ class ModelSelection(BaseModel):
 
     provider: str | None = None
     model: str | None = None
+    # Custom Ollama base URL (task 23.5): lets a hosted-app user point the backend at THEIR
+    # local Ollama instance instead of the server's configured OLLAMA_BASE_URL. Only honoured
+    # when provider=="ollama" (or when the server's configured engine is Ollama). Ignored for
+    # cloud providers (they have fixed base URLs). Persisted in localStorage by the frontend
+    # (not sensitive — it's just a URL, not a credential).
+    ollama_base_url: str | None = None
 
-    @field_validator("provider", "model")
+    @field_validator("provider", "model", "ollama_base_url")
     @classmethod
     def blank_to_none(cls, v: str | None) -> str | None:
         if v is None:

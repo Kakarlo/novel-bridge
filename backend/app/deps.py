@@ -66,6 +66,7 @@ def resolve_request_engine(
     api_key: str | None,
     settings: Settings,
     fallback: TranslationEngine | None = None,
+    ollama_base_url: str | None = None,
 ) -> TranslationEngine:
     """Build the per-request engine, translating factory errors into HTTP responses.
 
@@ -77,10 +78,15 @@ def resolve_request_engine(
     single-user clients keep working unchanged. ``fallback`` is the dependency-injected
     env engine (the cached singleton, or a test override) and is reused for the no-provider
     and matching-provider-no-key cases so overrides are honored.
+
+    ``ollama_base_url`` (task 23.5): when the request carries a custom Ollama URL (from the
+    user's picker on the hosted app), it overrides the server's OLLAMA_BASE_URL for this
+    request only. Ignored for cloud providers.
     """
     try:
         return get_engine_for_request(
-            provider, api_key, model, settings, fallback=fallback
+            provider, api_key, model, settings,
+            fallback=fallback, ollama_base_url=ollama_base_url,
         )
     except UnknownProviderError as exc:
         raise HTTPException(400, str(exc)) from exc

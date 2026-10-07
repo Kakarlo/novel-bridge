@@ -69,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     async def health(
         provider: str | None = None,
+        ollama_base_url: str | None = None,
         fallback_engine: TranslationEngine = Depends(get_translation_engine),
         api_key: str | None = Depends(get_request_api_key),
     ) -> dict:
@@ -81,12 +82,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # probes the server's env-configured engine (unchanged single-user behavior). An
         # unknown provider (400) / missing key (401) surfaces as a normal HTTP error, which
         # the indicator can show distinctly from "reachable=false".
+        # Task 23.5: `ollama_base_url` query param lets a hosted-app user probe THEIR local
+        # Ollama rather than the server's configured address.
         engine = resolve_request_engine(
             provider=provider,
             model=None,
             api_key=api_key,
             settings=settings,
             fallback=fallback_engine,
+            ollama_base_url=ollama_base_url,
         )
         try:
             reachable = await engine.health()
@@ -103,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/models")
     async def models(
         provider: str | None = None,
+        ollama_base_url: str | None = None,
         fallback_engine: TranslationEngine = Depends(get_translation_engine),
         api_key: str | None = Depends(get_request_api_key),
     ) -> dict:
@@ -115,12 +120,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # the server's env-configured engine. Flat {models, current} is kept (the current
         # single-provider contract); the provider-aware {providers:[...]} shape in tech.md
         # is a later change to make once the frontend drives it.
+        # Task 23.5: `ollama_base_url` query param lets a hosted-app user list from THEIR
+        # local Ollama instance.
         engine = resolve_request_engine(
             provider=provider,
             model=None,
             api_key=api_key,
             settings=settings,
             fallback=fallback_engine,
+            ollama_base_url=ollama_base_url,
         )
         try:
             available = await engine.list_models()

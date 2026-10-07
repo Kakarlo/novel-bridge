@@ -40,27 +40,33 @@ export interface Credentials {
   /** True if ANY provider has a key set this session (not just the active one). Drives the
    *  "you'll lose your key on refresh" guard, which must fire regardless of active provider. */
   anyKeySet: boolean;
+  /** Custom Ollama base URL (task 23.5). Overrides the server's OLLAMA_BASE_URL so a hosted-
+   *  app user can point to their own local Ollama. Persisted in localStorage (not sensitive).
+   *  Empty = use the server's configured address. */
+  ollamaUrl: string;
 }
 
-const SELECTION_KEY = "nb:llm-selection"; // {provider, model} — localStorage (persisted)
+const SELECTION_KEY = "nb:llm-selection"; // {provider, model, ollamaUrl} — localStorage (persisted)
 // The API key is intentionally NOT persisted anywhere: it lives only in `state` below (memory)
 // for the life of the page.
 
 function readInitial(): Credentials {
   let provider = "";
   let model = "";
+  let ollamaUrl = "";
   try {
     const raw = localStorage.getItem(SELECTION_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<Credentials>;
       provider = typeof parsed.provider === "string" ? parsed.provider : "";
       model = typeof parsed.model === "string" ? parsed.model : "";
+      ollamaUrl = typeof parsed.ollamaUrl === "string" ? parsed.ollamaUrl : "";
     }
   } catch {
     /* ignore corrupt/unavailable storage */
   }
   // apiKey always starts empty — a refresh clears it (memory-only), by design.
-  return { provider, model, apiKey: "", anyKeySet: false };
+  return { provider, model, apiKey: "", anyKeySet: false, ollamaUrl };
 }
 
 let state: Credentials = readInitial();
@@ -74,9 +80,12 @@ function emit() {
 }
 
 function persist(next: Credentials) {
-  // Only the non-sensitive provider/model choice is persisted. The API key is memory-only.
+  // Only the non-sensitive provider/model/ollamaUrl choice is persisted. The API key is memory-only.
   try {
-    localStorage.setItem(SELECTION_KEY, JSON.stringify({ provider: next.provider, model: next.model }));
+    localStorage.setItem(
+      SELECTION_KEY,
+      JSON.stringify({ provider: next.provider, model: next.model, ollamaUrl: next.ollamaUrl })
+    );
   } catch {
     /* best-effort */
   }

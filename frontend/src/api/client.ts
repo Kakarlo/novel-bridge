@@ -86,8 +86,12 @@ function authHeader(): Record<string, string> {
 
 /** `?provider=…` suffix for the current provider, or "" when using the server default. */
 function providerQuery(): string {
-  const { provider } = getCredentials();
-  return provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  const { provider, ollamaUrl } = getCredentials();
+  const params = new URLSearchParams();
+  if (provider) params.set("provider", provider);
+  if (ollamaUrl) params.set("ollama_base_url", ollamaUrl);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
 }
 
 /**
@@ -95,10 +99,14 @@ function providerQuery(): string {
  * LLM endpoint — translate, extract-style, extract-glossary — uses this unified shape), or
  * undefined when the user chose neither, so the server falls back to its default.
  */
-function engineSelection(): { provider?: string; model?: string } | undefined {
-  const { provider, model } = getCredentials();
-  if (!provider && !model) return undefined;
-  return { ...(provider ? { provider } : {}), ...(model ? { model } : {}) };
+function engineSelection(): { provider?: string; model?: string; ollama_base_url?: string } | undefined {
+  const { provider, model, ollamaUrl } = getCredentials();
+  if (!provider && !model && !ollamaUrl) return undefined;
+  return {
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+    ...(ollamaUrl ? { ollama_base_url: ollamaUrl } : {}),
+  };
 }
 
 export const api = {

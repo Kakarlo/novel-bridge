@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Engine selection
     nb_engine: str = "ollama"
 
+    # Debug: when true, engines/prompt builders print the assembled chat messages to stdout
+    # (useful while tuning prompts). Default OFF so a hosted/production run never spams logs
+    # or risks leaking content. Toggle with NB_DEBUG_PROMPTS=true.
+    nb_debug_prompts: bool = False
+
     # Ollama engine
     ollama_base_url: str = "http://192.168.254.22:11434"
     ollama_model: str = "qwen3.5:0.8b"

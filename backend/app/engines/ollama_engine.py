@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.debug import dump_messages
 from app.engines.base import (
     GlossaryPair,
     ReferenceExtraction,
@@ -165,10 +166,7 @@ class OllamaEngine(TranslationEngine):
         in_think = False
         meta: dict | None = None
 
-        for i, msg in enumerate(payload["messages"]):
-            print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
-            print(msg["content"])
-
+        dump_messages(payload["messages"], "OLLAMA REQUEST")
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream(

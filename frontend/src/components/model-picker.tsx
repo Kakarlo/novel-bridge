@@ -91,17 +91,22 @@ function ProviderDialog({
   const [keyDraft, setKeyDraft] = useState(apiKey);
   const [showKey, setShowKey] = useState(false);
 
-  // Keep the draft in sync if the dialog reopens with a different stored key.
+  // Keep the draft in sync with the stored key when the dialog reopens or the active provider
+  // changes. Switching provider clears the stored key (a key is provider-specific), so the
+  // draft must follow — otherwise the previous provider's key would linger in the input.
   useEffect(() => {
     if (open) setKeyDraft(apiKey);
-  }, [open, apiKey]);
+  }, [open, apiKey, activeProviderId]);
 
   const needsKey = providerNeedsKey(activeProviderId);
   const hasKey = apiKey.trim().length > 0;
 
   function chooseProvider(id: string) {
-    // Switching provider resets the model to that provider's default (empty = default).
-    setCredentials({ provider: id, model: "" });
+    if (id === activeProviderId) return;
+    // Switching provider resets the model to that provider's default (empty = default) AND
+    // clears the key — a key belongs to one provider, so carrying it over would be wrong.
+    setCredentials({ provider: id, model: "", apiKey: "" });
+    setKeyDraft("");
   }
 
   function chooseModel(model: string) {

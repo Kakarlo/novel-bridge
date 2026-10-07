@@ -436,8 +436,6 @@ async def extract_translation_glossary(
     # Reason: Requires deterministic post-processing, but does not affect the
     # correctness of the current translation pipeline.
 
-    print(pairs)
-
     return [
         GlossaryPairSuggestion(
             source_term=p.source_term,

@@ -11,10 +11,16 @@ import { useSyncExternalStore } from "react";
  *   matching the backend contract.
  *
  * Storage choice (per the project's local-first, no-cloud-personal-data stance): the key is
- * kept in **sessionStorage**, so it lives for the browser tab/session and is gone when the
- * tab closes — it is never written to disk-persisted localStorage and never sent anywhere but
- * the backend proxy. The provider/model choice is persisted in localStorage (not sensitive)
- * so the picker remembers the selection across sessions.
+ * held in **memory only** — a module variable, never written to localStorage or
+ * sessionStorage. It lives for the lifetime of the page (gone on refresh/close) and is sent
+ * only on the X-LLM-Api-Key header to the backend proxy. Keeping it out of any persistent
+ * store means it isn't sitting in a devtools-inspectable location and can't be read back by a
+ * later script via storage. The provider/model choice IS persisted in localStorage (not
+ * sensitive) so the picker remembers the selection across sessions.
+ *
+ * Note: memory-only is a deliberate, low-cost hardening — not full XSS protection. A script
+ * running in the page can still observe the key in flight. Stronger isolation (httpOnly
+ * server-side session, or a worker-held key) is a larger change tracked separately.
  *
  * Follows the same module-level `useSyncExternalStore` pattern as use-active-stream.ts so any
  * component (picker, translate tab, health/models hooks) stays in sync without prop drilling.
@@ -30,12 +36,12 @@ export interface Credentials {
 }
 
 const SELECTION_KEY = "nb:llm-selection"; // {provider, model} — localStorage (persisted)
-const API_KEY_KEY = "nb:llm-api-key"; // apiKey — sessionStorage (session-only, not to disk)
+// The API key is intentionally NOT persisted anywhere: it lives only in `state` below (memory)
+// for the life of the page.
 
 function readInitial(): Credentials {
   let provider = "";
   let model = "";
-  let apiKey = "";
   try {
     const raw = localStorage.getItem(SELECTION_KEY);
     if (raw) {
@@ -46,12 +52,8 @@ function readInitial(): Credentials {
   } catch {
     /* ignore corrupt/unavailable storage */
   }
-  try {
-    apiKey = sessionStorage.getItem(API_KEY_KEY) ?? "";
-  } catch {
-    /* ignore */
-  }
-  return { provider, model, apiKey };
+  // apiKey always starts empty — a refresh clears it (memory-only), by design.
+  return { provider, model, apiKey: "" };
 }
 
 let state: Credentials = readInitial();
@@ -62,14 +64,9 @@ function emit() {
 }
 
 function persist(next: Credentials) {
+  // Only the non-sensitive provider/model choice is persisted. The API key is memory-only.
   try {
     localStorage.setItem(SELECTION_KEY, JSON.stringify({ provider: next.provider, model: next.model }));
-  } catch {
-    /* best-effort */
-  }
-  try {
-    if (next.apiKey) sessionStorage.setItem(API_KEY_KEY, next.apiKey);
-    else sessionStorage.removeItem(API_KEY_KEY);
   } catch {
     /* best-effort */
   }

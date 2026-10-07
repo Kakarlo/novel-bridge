@@ -27,6 +27,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.debug import dump_messages
 from app.engines.base import (
     GlossaryPair,
     ReferenceExtraction,
@@ -134,9 +135,7 @@ class GeminiEngine(TranslationEngine):
         model_used = req.model or self._model
         in_think = False
 
-        for i, msg in enumerate(messages):
-            print(f"\n--- MESSAGE {i} ({msg['role']}) ---")
-            print(msg["content"])
+        dump_messages(messages, "GEMINI REQUEST")
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             url = self._model_url(req.model, "streamGenerateContent") + "?alt=sse"

@@ -17,6 +17,7 @@ Prompts are a small set of named, composable builders rather than one blob:
 
 from __future__ import annotations
 
+from app.debug import dump_messages
 from app.engines.base import TranslationRequest
 from app.models import SourceLang
 
@@ -438,12 +439,12 @@ def build_glossary_pairing_messages(
     #     )
     parts.append(f"## Source chapter\n{_RAW_OPEN}\n{raw_text}\n{_RAW_CLOSE}")
     parts.append(f"## English translation\n{_TRANS_OPEN}\n{output_text}\n{_TRANS_CLOSE}")
-    print(GLOSSARY_PAIRING_SYSTEM_PROMPT)
-    print(parts)
-    return [
+    messages = [
         {"role": "system", "content": GLOSSARY_PAIRING_SYSTEM_PROMPT},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
+    dump_messages(messages, "GLOSSARY PAIRING")
+    return messages
 
 
 # --- Style extraction prompts ------------------------------------------------

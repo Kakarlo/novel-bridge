@@ -310,13 +310,14 @@ class OllamaEngine(TranslationEngine):
     async def health(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"{self._base_url}/api/tags")
+                # Ollama's official root endpoint acts as the health check
+                resp = await client.head(f"{self._base_url}/")
                 return resp.status_code == 200
         except httpx.HTTPError:
             return False
 
     async def list_models(self) -> list[str]:
-        """List installed models via Ollama's GET /api/tags. [] if unreachable."""
+        """List installed models via Ollama's GET /api/tags, filtered for text LLMs."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(f"{self._base_url}/api/tags")
@@ -324,6 +325,21 @@ class OllamaEngine(TranslationEngine):
                 data = resp.json()
         except (httpx.HTTPError, ValueError):
             return []
+
         models = data.get("models") or []
-        names = [m.get("name", "") for m in models if isinstance(m, dict)]
-        return sorted(n for n in names if n)
+        names: list[str] = []
+
+        for m in models:
+            if not isinstance(m, dict):
+                continue
+            name = m.get("name", "")
+            if not name:
+                continue
+            # Filter: Skip dedicated local embedding models (e.g., nomic-embed-text, mxbai-embed)
+            if "embed" in name.lower():
+                continue
+
+            names.append(name)
+
+        return sorted(names)
+

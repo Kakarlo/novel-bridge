@@ -18,7 +18,7 @@ export type HealthState =
   | { kind: "ok"; data: Health }
   | { kind: "unreachable"; data: Health | null };
 
-const POLL_MS = 60_000;
+const POLL_MS = 30_000;
 
 /**
  * Light health poll of GET /api/health for the model-status indicator.
@@ -52,13 +52,12 @@ export function useHealth(): HealthState {
 
     run();
     const id = window.setInterval(run, POLL_MS);
-    const onFocus = () => run();
-    window.addEventListener("focus", onFocus);
 
+    // CHANGED: Removed the window.addEventListener("focus") bindings to completely
+    // stop health checks from firing repeatedly when alt-tabbing into the browser.
     return () => {
       active = false;
       window.clearInterval(id);
-      window.removeEventListener("focus", onFocus);
     };
     // Re-run (and re-probe immediately) when the selected provider or key changes.
   }, [check, provider, apiKey]);

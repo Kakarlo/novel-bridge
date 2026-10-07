@@ -266,6 +266,25 @@ def test_translate_save_false_skips_autosave_and_null_id(client):
     assert client.get(f"/api/projects/{pid}/translations").json() == []
 
 
+def test_translate_stateless_body_no_server_project(client):
+    """The stateless path works WITHOUT a server-side project row.
+
+    Regression (reported after 23.4c): the IndexedDB backend owns the project, so the server
+    has no row for `pid`. A body-supplied glossary signals the stateless path, so the route
+    must NOT 404 on a missing project — it streams and completes. (Before the fix the route
+    unconditionally read the project and raised "Project not found".)
+    """
+    _events, done = _run_translate(
+        client,
+        "idb-only-project-id",  # never created server-side
+        "hello there",
+        extra={"glossary": [], "style_profile": "", "save": False},
+    )
+    assert done["done"] is True
+    assert done["translation_id"] is None
+    assert "".join(e.get("content", "") for e in _events)  # tokens streamed
+
+
 def test_translate_body_style_profile_used_verbatim(client):
     """Task 23.4b: a body-supplied style_profile is accepted (used verbatim; empty string is a
     valid "no style"). The stream still completes normally with save=false."""

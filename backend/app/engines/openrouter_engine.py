@@ -227,7 +227,7 @@ class OpenRouterEngine(TranslationEngine):
             return False
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(
+                resp = await client.head(
                     f"{self._base_url}/models",
                     headers=self._headers(),
                 )
@@ -246,7 +246,7 @@ class OpenRouterEngine(TranslationEngine):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
-                    f"{self._base_url}/models",
+                    f"{self._base_url}/models?output_modalities=text&sort=pricing-low-to-high",
                     headers=self._headers(),
                 )
                 resp.raise_for_status()
@@ -254,5 +254,5 @@ class OpenRouterEngine(TranslationEngine):
         except (httpx.HTTPError, ValueError):
             return []
         models = data.get("data") or []
-        ids = [m.get("id", "") for m in models if isinstance(m, dict)]
-        return sorted(i for i in ids if i)
+        # Kept the exact order returned by the API instead of forcing alphabetical sort
+        return [m.get("id", "") for m in models if isinstance(m, dict) and m.get("id")]

@@ -58,8 +58,13 @@ def translate(
     settings: Settings = Depends(get_settings),
     api_key: str | None = Depends(get_request_api_key),
 ):
-    project = store.get_project(pid)
-    if not project:
+    # Stateless signal (task 23.4b/c): a client-supplied `glossary` means the browser
+    # (IndexedDB backend) owns the data and drives this request, so there is NO server-side
+    # project to read — skip the project lookup and its 404 guard entirely. On the DB-backed
+    # path (glossary omitted) we still require the project to exist and read its style profile.
+    stateless = body.glossary is not None
+    project = None if stateless else store.get_project(pid)
+    if not stateless and not project:
         raise HTTPException(404, "Project not found")
 
     # --- Per-request engine resolution (BYO-key multi-user path) ----------------
@@ -82,14 +87,18 @@ def translate(
     # does no storage read when `glossary`/`style_profile` are supplied. When they're omitted
     # (today's API-backend clients) the server falls back to loading from storage by `pid`.
     glossary = body.glossary if body.glossary is not None else store.list_glossary(pid)
+    # On the stateless path `project` is None, but the idb client always ships `style_profile`
+    # (23.4b); fall back to "" if it somehow didn't. On the DB path read it off the project.
     style_profile = (
-        body.style_profile if body.style_profile is not None else (project.style_profile or "")
+        body.style_profile
+        if body.style_profile is not None
+        else ((project.style_profile or "") if project else "")
     )
     # References only feed the DERIVED reference context used for budgeting/notice. On the
     # stateless (body-driven) path the browser doesn't ship references — the project-level
     # style profile replaced per-reference summaries — so skip the storage read entirely when
     # the client drove the glossary. Only the API-storage path still consults references.
-    references = [] if body.glossary is not None else store.list_references(pid)
+    references = [] if stateless else store.list_references(pid)
     built = cb.build(
         glossary, references, body.raw_text, settings.nb_context_budget_tokens
     )

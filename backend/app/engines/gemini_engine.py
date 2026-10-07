@@ -253,7 +253,7 @@ class GeminiEngine(TranslationEngine):
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(
-                    f"{self._base_url}/models",
+                    f"{self._base_url}/models/gemini-3.5-flash-lite",
                     headers=self._headers(),
                 )
                 return resp.status_code == 200
@@ -261,10 +261,11 @@ class GeminiEngine(TranslationEngine):
             return False
 
     async def list_models(self) -> list[str]:
-        """List available Gemini models.
+        """List available Gemini models filtered for production-ready text LLMs only.
 
-        Gemini's GET /v1beta/models returns `{models: [{name: "models/gemini-...", ...}]}`.
-        We strip the "models/" prefix so the ID matches what's passed to generateContent.
+        Gemini's GET /v1beta/models returns `{models: [{name, description, ...}]}`.
+        We strip the prefix, verify generateContent support, eliminate deprecated
+        or restricted experimental builds, and skip dedicated audio/embedding profiles.
         [] if unreachable or key is missing.
         """
         if not self._api_key:
@@ -279,17 +280,40 @@ class GeminiEngine(TranslationEngine):
                 data = resp.json()
         except (httpx.HTTPError, ValueError):
             return []
+
         models = data.get("models") or []
         names: list[str] = []
+
         for m in models:
             if not isinstance(m, dict):
                 continue
+
             name = m.get("name", "")
-            # Gemini returns "models/gemini-2.0-flash" — strip the prefix.
+            # Gemini returns "models/gemini-2.5-flash" — strip the prefix.
             if name.startswith("models/"):
                 name = name[len("models/"):]
-            # Only include generative models (skip embedding models, etc.).
+
+            if not name:
+                continue
+
+            # 1. Filter: Skip known unusable legacy/deprecated models based on description
+            description = m.get("description", "").lower()
+            if "deprecated" in description or "discontinued" in description:
+                continue
+
+            # 2. Filter: Skip locked or unmaintained experimental preview variants
+            if "-preview" in name.lower() or "experimental" in description:
+                continue
+
+            # 3. Filter: Skip dedicated non-text modalities (audio, speech, and embeddings)
+            skip_keywords = ["-audio", "-tts", "-transcribe", "embedding"]
+            if any(keyword in name.lower() for keyword in skip_keywords):
+                continue
+
+            # 4. Filter: Only include valid generative text content models
             methods = m.get("supportedGenerationMethods") or []
-            if "generateContent" in methods and name:
+            if "generateContent" in methods:
                 names.append(name)
+
         return sorted(names)
+

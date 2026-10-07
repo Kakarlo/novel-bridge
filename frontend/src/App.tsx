@@ -54,7 +54,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background theme-transition">
       <ProjectSidebar
         projects={projects}
         activeId={activeId}

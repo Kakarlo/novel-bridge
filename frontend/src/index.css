@@ -2,13 +2,14 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/newsreader";
+@import "@fontsource-variable/inter";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-heading: "Newsreader Variable", ui-serif, Georgia, serif;
-  --font-serif: "Newsreader Variable", ui-serif, Georgia, serif;
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-heading: "Inter Variable", sans-serif;
+  --font-serif: "Inter Variable", sans-serif;
+  --font-sans: "Inter Variable", sans-serif;
 
   --color-accent-brand: var(--accent-brand);
   --color-accent-brand-foreground: var(--accent-brand-foreground);
@@ -100,6 +101,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  --theme-transition: 200ms ease;
 }
 
 /* Softer Kindle-style dark mode */
@@ -150,6 +153,13 @@
   --sidebar-ring: #707070;
 }
 
+.theme-transition {
+  transition:
+    background-color var(--theme-transition),
+    border-color var(--theme-transition),
+    color var(--theme-transition);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -184,7 +194,7 @@
   /* Dedicated novel-reading content */
   .chapter-content {
     font-size: 1rem;
-    line-height: 1.9;
+    line-height: 1.65;
     letter-spacing: 0.015em;
     color: var(--foreground);
   }

@@ -29,7 +29,7 @@ const POLL_MS = 30_000;
 export function useHealth(): HealthState {
   // Cred-aware: the client sends the chosen provider + key, so health reflects the user's own
   // provider. Re-probe when either changes (e.g. right after a key is entered).
-  const { provider, apiKey } = useCredentials();
+  const { provider, apiKey, ollamaUrl } = useCredentials();
   const [state, setState] = useState<HealthState>({ kind: "loading", data: null });
 
   const check = useCallback(async () => {
@@ -60,7 +60,7 @@ export function useHealth(): HealthState {
       window.clearInterval(id);
     };
     // Re-run (and re-probe immediately) when the selected provider or key changes.
-  }, [check, provider, apiKey]);
+  }, [check, provider, apiKey, ollamaUrl]);
 
   return state;
 }

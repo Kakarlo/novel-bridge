@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2, Settings2, Wifi } from "lucide-react";
 
 import { DEFAULT_PROVIDER_ID, PROVIDERS, providerNeedsKey } from "@/api/providers";
@@ -107,6 +107,19 @@ function ProviderDialog({
   const [keyDraft, setKeyDraft] = useState(apiKey);
   const [urlDraft, setUrlDraft] = useState(ollamaUrl);
   const [showKey, setShowKey] = useState(false);
+  // Track the last test result to give the user feedback after the probe completes.
+  const [testStatus, setTestStatus] = useState<"idle" | "ok" | "fail">("idle");
+  const prevLoading = useRef(false);
+  useEffect(() => {
+    if (prevLoading.current && !connectionLoading) {
+      setTestStatus(activeModels.length > 0 ? "ok" : "fail");
+    }
+    prevLoading.current = connectionLoading;
+  }, [connectionLoading, activeModels.length]);
+  // Reset status when the URL draft changes (stale result no longer applies).
+  useEffect(() => {
+    setTestStatus("idle");
+  }, [urlDraft]);
 
   // Keep drafts in sync when the dialog reopens or the active provider changes. Switching
   // provider clears the stored key, so the draft must follow.
@@ -211,6 +224,10 @@ function ProviderDialog({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
+                {testStatus === "ok" && (
+                  <span className="text-green-600 dark:text-green-400 font-medium">Connected · </span>
+                )}
+                {testStatus === "fail" && <span className="text-destructive font-medium">Unreachable · </span>}
                 {ollamaUrl ? `Using: ${ollamaUrl}` : "Leave blank to use the server's configured Ollama address."}
               </p>
             </div>

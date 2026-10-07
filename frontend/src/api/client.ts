@@ -36,9 +36,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit & { parse?: boolean }): Promise<T> {
+  // Destructure headers out of init so the spread below doesn't overwrite the merged value.
+  const { headers: initHeaders, ...restInit } = init ?? {};
+  const mergedHeaders =
+    restInit?.body != null ? { "Content-Type": "application/json", ...(initHeaders ?? {}) } : initHeaders;
   const res = await fetch(`${BASE}${path}`, {
-    headers: init?.body != null ? { "Content-Type": "application/json", ...(init?.headers ?? {}) } : init?.headers,
-    ...init,
+    headers: mergedHeaders,
+    ...restInit,
   });
 
   if (!res.ok) {

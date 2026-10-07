@@ -84,23 +84,19 @@ export function DataManager() {
 
   return (
     <div className="flex items-center gap-1">
-      <Button
-        size="icon-xs"
-        variant="ghost"
-        onClick={doExport}
-        aria-label="Export a backup"
-        title="Export a backup (JSON)"
-      >
-        <Download className="text-muted-foreground" />
+      <Button size="xs" variant="outline" onClick={doExport} data-icon="inline-start" title="Export a backup (JSON)">
+        <Download />
+        Export
       </Button>
       <Button
-        size="icon-xs"
-        variant="ghost"
+        size="xs"
+        variant="outline"
         onClick={() => fileInput.current?.click()}
-        aria-label="Import a backup"
+        data-icon="inline-start"
         title="Import a backup (JSON)"
       >
-        <Upload className="text-muted-foreground" />
+        <Upload />
+        Import
       </Button>
       <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={onFilePicked} />
 

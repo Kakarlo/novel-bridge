@@ -15,12 +15,21 @@ import type { StorageService } from "./types";
 export type StorageBackend = "api" | "idb";
 const BACKEND_KEY = "nb:storage";
 
+// Build-time default, baked into the bundle at `vite build`. The HOSTED build sets
+// `VITE_STORAGE_BACKEND=idb` so the browser store is the default and NO server DB is created
+// from normal use. Self-host / local-dev builds leave it unset (or "api") to use the backend
+// SQLite store. The localStorage flag below is a per-browser DEV override, never the hosted
+// default — so a visitor can't accidentally fall back to the shared server DB.
+const BUILD_DEFAULT: StorageBackend = import.meta.env.VITE_STORAGE_BACKEND === "idb" ? "idb" : "api";
+
 export function getStorageBackend(): StorageBackend {
   try {
-    return localStorage.getItem(BACKEND_KEY) === "idb" ? "idb" : "api";
+    const override = localStorage.getItem(BACKEND_KEY);
+    if (override === "idb" || override === "api") return override;
   } catch {
-    return "api";
+    /* ignore unavailable storage */
   }
+  return BUILD_DEFAULT;
 }
 
 /** Switch the active backend and reload so the new store takes over cleanly. */

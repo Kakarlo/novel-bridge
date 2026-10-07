@@ -185,22 +185,24 @@ export function ProjectSidebar({
         )}
       </ScrollArea>
 
-      {/* Footer: engine/model health + theme toggle. */}
-      <div className="flex items-center gap-2 border-t p-3">
-        <div className="min-w-0 flex-1">
+      {/* Footer: engine/model health, then a bottom row of app actions (backup + theme). */}
+      <div className="space-y-2 border-t p-3">
+        <div className="min-w-0">
           <ModelPicker />
           <ModelStatus />
         </div>
-        <DataManager />
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onToggleTheme}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {theme === "dark" ? <Sun /> : <Moon />}
-        </Button>
+        <div className="flex items-center justify-between gap-2">
+          <DataManager />
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onToggleTheme}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun /> : <Moon />}
+          </Button>
+        </div>
       </div>
 
       <ConfirmDialog

@@ -83,6 +83,17 @@ function providerQuery(): string {
   return provider ? `?provider=${encodeURIComponent(provider)}` : "";
 }
 
+/**
+ * The `selection` object for LLM endpoints that take the engine override in the BODY (every
+ * LLM endpoint — translate, extract-style, extract-glossary — uses this unified shape), or
+ * undefined when the user chose neither, so the server falls back to its default.
+ */
+function engineSelection(): { provider?: string; model?: string } | undefined {
+  const { provider, model } = getCredentials();
+  if (!provider && !model) return undefined;
+  return { ...(provider ? { provider } : {}), ...(model ? { model } : {}) };
+}
+
 export const api = {
   // --- health ---
   // Cred-aware: sends the chosen provider (query) + API key (header) so the status indicator
@@ -109,11 +120,19 @@ export const api = {
   // Extract a writing-style profile (LLM call). With no body, analyzes the project's newest
   // reference chapter; pass { content } to analyze a specific pasted chapter instead.
   // Returns the updated Project (style_profile set). 502 on engine failure, 404 if no content.
-  extractProjectStyle: (id: string, content?: string) =>
-    request<Project>(`/projects/${id}/extract-style`, {
+  // Cred-aware: sends the chosen provider/model as `selection` in the body + the API key on
+  // the X-LLM-Api-Key header, so style extraction uses the user's model, not the server default.
+  extractProjectStyle: (id: string, content?: string) => {
+    const selection = engineSelection();
+    const payload = { ...(content ? { content } : {}), ...(selection ? { selection } : {}) };
+    return request<Project>(`/projects/${id}/extract-style`, {
       method: "POST",
-      body: content ? JSON.stringify({ content }) : undefined,
-    }),
+      headers: authHeader(),
+      // Send a body only when there's something to send; an empty object is fine too, but
+      // keep it undefined so the server's "no body" default path still works.
+      body: Object.keys(payload).length ? JSON.stringify(payload) : undefined,
+    });
+  },
   // Manually set/edit the style profile (user-authored). Returns the updated Project.
   setProjectStyle: (id: string, style_profile: string) =>
     request<Project>(`/projects/${id}/style`, { method: "PUT", body: JSON.stringify({ style_profile }) }),
@@ -173,8 +192,16 @@ export const api = {
   // LLM-paired glossary extraction from a saved translation. Returns paired source→English
   // suggestions for the user to confirm into the glossary. Not gated (always available);
   // replaces the old deterministic term-alignment endpoint.
-  translationExtractGlossary: (tid: string) =>
-    request<GlossaryPairSuggestion[]>(`/translations/${tid}/extract-glossary`, { method: "POST" }),
+  // Cred-aware: sends the chosen provider/model as `selection` in the body (unified pattern)
+  // + the API key on the X-LLM-Api-Key header, so pairing uses the user's model.
+  translationExtractGlossary: (tid: string) => {
+    const selection = engineSelection();
+    return request<GlossaryPairSuggestion[]>(`/translations/${tid}/extract-glossary`, {
+      method: "POST",
+      headers: authHeader(),
+      body: selection ? JSON.stringify({ selection }) : undefined,
+    });
+  },
 
   /**
    * Open the SSE translate stream. Returns an async iterator of parsed events;

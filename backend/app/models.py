@@ -284,6 +284,19 @@ class ModelSelection(BaseModel):
         return v or None
 
 
+class GlossaryExtractBody(BaseModel):
+    """Optional body for POST /translations/{tid}/extract-glossary.
+
+    Carries the per-request engine override ({provider, model}) as ``selection`` — the SAME
+    shape as the translate and extract-style bodies, so every LLM endpoint accepts the engine
+    choice the same way (no more provider/model query params). Omitted entirely → the server
+    falls back to its configured engine + default model. The API key rides on the
+    X-LLM-Api-Key header, never in this body.
+    """
+
+    selection: "ModelSelection | None" = None
+
+
 class TranslateRequest(BaseModel):
     raw_text: str = Field(min_length=1)
     source_lang: SourceLang
@@ -305,6 +318,7 @@ class TranslateRequest(BaseModel):
         return v
 
 
-# StyleExtractBody references ModelSelection via a forward ref (ModelSelection is defined
-# later in this module); resolve it now that both classes exist.
+# StyleExtractBody and GlossaryExtractBody reference ModelSelection via a forward ref
+# (ModelSelection is defined later in this module); resolve them now that all classes exist.
 StyleExtractBody.model_rebuild()
+GlossaryExtractBody.model_rebuild()

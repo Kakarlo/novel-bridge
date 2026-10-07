@@ -15,6 +15,7 @@ from app.engines.base import TranslationEngine
 from app.models import (
     GlossaryCreate,
     GlossaryEntry,
+    GlossaryExtractBody,
     GlossaryPairSuggestion,
     GlossaryStatusUpdate,
     GlossaryUpdate,
@@ -367,8 +368,7 @@ def get_translation_source_terms(
 )
 async def extract_translation_glossary(
     tid: str,
-    provider: str | None = None,
-    model: str | None = None,
+    body: GlossaryExtractBody | None = None,
     store: StorageService = Depends(get_storage),
     fallback_engine: TranslationEngine = Depends(get_translation_engine),
     settings: Settings = Depends(get_settings),
@@ -394,9 +394,12 @@ async def extract_translation_glossary(
     if not tr:
         raise HTTPException(404, "Translation not found")
 
-    # Per-request engine resolution (BYO-key). provider/model come as query params here
-    # (this POST carries no body); key from the X-LLM-Api-Key header. Falls back to the
-    # env/injected engine when no creds are supplied.
+    # Per-request engine resolution (BYO-key). selection.{provider, model} from the body
+    # (unified pattern — same as translate / extract-style); key from the X-LLM-Api-Key
+    # header. Falls back to the env/injected engine when no creds are supplied.
+    sel = body.selection if body else None
+    provider = sel.provider if sel else None
+    model = sel.model if sel else None
     engine = resolve_request_engine(
         provider=provider,
         model=model,

@@ -224,21 +224,25 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
           category/gender badge; hover approve/reject (`setGlossaryStatus`); status filter with
           counts; classic paired entries still supported. Opt-in review toggle moves to 14.6 with
           the translate-tab review panel. Frontend builds clean.
-    - 14.6 In-context review UI (**lightweight, opt-in**): translate-tab review panel +
-      basic output highlighting; history retro-review via the matches endpoint. Not a full
-      inline-edit review studio.
-    - 14.7 Verification: end-to-end on mock + one live pass; update README/steering.
+    - [x] 14.6 In-context review UI (**lightweight, opt-in**): translate-tab review panel +
+          basic output highlighting; history retro-review via the matches endpoint. Shipped as
+          `translation-review.tsx` (source terms + LLM-paired suggestions) — not a full
+          inline-edit review studio.
+    - [x] 14.7 Verification: end-to-end on mock + live passes; README/steering updated.
 
-- [ ] 15. Model picker (deferred; capture only)
-  - `GET /api/models` proxying Ollama `/api/tags`, plus per-request model plumbing (engine
-    already accepts `TranslationRequest.model`). Build after the frontend model-status indicator.
+- [x] 15. Model picker (SHIPPED)
+  - `GET /api/models` + `engine.list_models()` (Ollama parses `/api/tags`, mock returns
+    `["mock"]`), per-request `{provider, model}` selection on the translate/extract bodies
+    (engine honors `TranslationRequest.model`). Frontend `model-picker.tsx` (provider + model +
+    API-key dialog), merged into the status indicator in the sidebar footer.
 
-- [ ] 21. Bring-your-own LLM API token (future track; capture only — do not build yet)
-  - North-star direction: let users plug in a hosted-model API key so translation works without
-    running Ollama locally. Additive new engine behind the `TranslationEngine` interface
-    (alongside Ollama/mock), key stored in local config for now. **Local-first still holds** —
-    no accounts/cloud yet; those come only if adoption warrants it, behind `StorageService`.
-    Do not design anything in task 14 that blocks this, but don't start it.
+- [x] 21. Bring-your-own LLM API token (SHIPPED)
+  - Hosted-model engines added behind the `TranslationEngine` interface: `gemini_engine.py`,
+    `openrouter_engine.py` (alongside Ollama/mock). Per-request engine resolution
+    (`resolve_request_engine`) from a body `selection:{provider,model}` + the `X-LLM-Api-Key`
+    header. Frontend `use-credentials.ts` holds the key in memory (per-provider, session-only),
+    provider/model persisted. **Local-first still holds** — no accounts/cloud; credentials are
+    not stored server-side.
 
 - [ ] 22. User-editable prompts per task (NOVELTY TRACK; spec after task 14's data layer)
   - **Why it matters:** this is a core differentiator. The competitors (OpenNovel,
@@ -253,6 +257,53 @@ Note: `num_thread` (per-request CPU cap) is already implemented in config + the 
   - **Sequencing:** right after task 14's data/storage layer; it's small and high-leverage. An
     optimized flow for paid/hosted models is a later follow-up (relates to task 21).
   - Capture only for now — flag the design before building.
+
+- [ ] 23. Local-first storage migration (MAJOR; phased — full design in
+      `design-local-first-storage.md`)
+  - **Goal:** make NovelBridge a hosted web app that stores ZERO user content on the server.
+    All user data (projects, references, glossary, history) lives in the browser (IndexedDB via
+    Dexie) with JSON export/import; the backend keeps only stateless compute (translate + the
+    AI/NER passes). Users bring their own model (hosted key — shipped — or their own Ollama).
+  - **Confirmed decisions (design §8):** IndexedDB via Dexie (not SQLite-WASM); JSON
+    export/import with `merge`|`replace`; backend stays stateless and keeps spaCy NER + all LLM
+    calls (content rides in the request body); no tunnels/desktop app for local-model access.
+  - **Phases (each a commit; `npm run build` + offline `pytest` green):**
+    - [x] 23.1 Frontend `StorageService` interface + `ApiStorageService` (REST pass-through);
+          route all component data access through `getStorage()`. No behavior change — the safety net.
+    - [x] 23.2 `IndexedDbStorage` (Dexie) implementing the interface + export/import; backend
+          chosen at build time via `VITE_STORAGE_BACKEND` (`idb` for the hosted build so no server
+          DB is created), with a `localStorage nb:storage` dev override.
+    - [x] 23.3 Export / import / merge UI (`data-manager.tsx` in the sidebar footer); "share a
+          glossary" falls out of merge (dedupe on `surface_form`).
+    - [~] 23.4 Thin the backend to stateless (THE contract break — do in small commits):
+      - [x] 23.4a Client-side auto-save of translations on the idb backend
+            (`StorageService.saveTranslation`); `TranslationReview` hidden on idb. (partial step 4)
+      - [ ] 23.4b `POST /translate` takes `glossary` + `style_profile` + `raw_text` in the body
+            (no server-side load, no server-side auto-save); frontend sends them on the idb backend.
+      - [ ] 23.4c `extract-style` takes the reference `content` in the body; `extract-glossary`
+            takes `raw_text` + `output_text`; add `POST /api/detect-names` taking `{content}`
+            (spaCy stays server-side). Frontend sends content from the local store.
+      - [ ] 23.4d Decide per deterministic pass (term_match, pronoun/source-term) whether it
+            moves to the client as plain TS or stays a stateless compute endpoint; restore
+            client-side term review so the review panel works on the idb backend.
+      - [ ] 23.4e Remove the pure-CRUD routes from the backend once the browser is authoritative.
+    - [ ] 23.5 Local-model access from the hosted app + the Ollama-config-in-UI fields + the
+          user guide with the security warnings (design §6/§9). Decided: browser → `localhost`
+          (simple) and LAN server (advanced); no tunnels.
+
+### Shipped post-PoC extras (not in the original plan)
+
+Captured for the record — all shipped, verified offline on the mock engine:
+
+- Deterministic proper-noun detection (`noun_extract.py`, spaCy) → `detected_names` on
+  references + `POST /references/{id}/redetect`; promotable to the glossary.
+- Chapter-number parsing from titles (`chapter_number.py`); references list in chapter order.
+- Per-project writing-style profile (`extract-style`, replacing per-reference summaries).
+- Source-language term NER (`source_terms.py`, gated by `NB_SOURCE_TERMS`) and pronoun-drift
+  detection (`pronoun_check.py`, gated by `NB_PRONOUN_CHECK`) over saved translations.
+- LLM-paired glossary extraction (`extract-glossary`) replacing the deterministic aligner.
+- Draft persistence + stream guardrails (per-project draft, `beforeunload` guard, project-switch
+  confirm); tab content kept mounted so a stream survives tab switches.
 
 ### Frontend
 

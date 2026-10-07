@@ -10,13 +10,17 @@ import { useSyncExternalStore } from "react";
  * - the API key rides ONLY on the `X-LLM-Api-Key` request header (never in a JSON body),
  *   matching the backend contract.
  *
- * Storage choice (per the project's local-first, no-cloud-personal-data stance): the key is
+ * Storage choice (per the project's local-first, no-cloud-personal-data stance): keys are
  * held in **memory only** — a module variable, never written to localStorage or
- * sessionStorage. It lives for the lifetime of the page (gone on refresh/close) and is sent
- * only on the X-LLM-Api-Key header to the backend proxy. Keeping it out of any persistent
- * store means it isn't sitting in a devtools-inspectable location and can't be read back by a
- * later script via storage. The provider/model choice IS persisted in localStorage (not
+ * sessionStorage. They live for the lifetime of the page (gone on refresh/close) and are sent
+ * only on the X-LLM-Api-Key header to the backend proxy. Keeping them out of any persistent
+ * store means they aren't sitting in a devtools-inspectable location and can't be read back by
+ * a later script via storage. The provider/model choice IS persisted in localStorage (not
  * sensitive) so the picker remembers the selection across sessions.
+ *
+ * Keys are remembered PER PROVIDER for the life of the tab: switching provider swaps in that
+ * provider's remembered key (or empty), so moving away and back doesn't lose a key — but a
+ * key is never carried across providers (it belongs to exactly one). Still memory-only.
  *
  * Note: memory-only is a deliberate, low-cost hardening — not full XSS protection. A script
  * running in the page can still observe the key in flight. Stronger isolation (httpOnly
@@ -57,6 +61,9 @@ function readInitial(): Credentials {
 }
 
 let state: Credentials = readInitial();
+// Per-provider API keys, memory-only. `state.apiKey` always mirrors the ACTIVE provider's key
+// here, so downstream readers (client.ts, picker) keep using the flat `apiKey` field.
+const keysByProvider: Record<string, string> = {};
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -80,6 +87,20 @@ export function getCredentials(): Credentials {
 /** Merge-update the credentials and notify subscribers. */
 export function setCredentials(patch: Partial<Credentials>) {
   const next: Credentials = { ...state, ...patch };
+
+  // Switching provider: swap in that provider's remembered key (not the previous provider's).
+  // A caller that passes BOTH provider and apiKey (unusual) still wins for apiKey below.
+  const switchingProvider = patch.provider !== undefined && patch.provider !== state.provider;
+  if (switchingProvider && patch.apiKey === undefined) {
+    next.apiKey = keysByProvider[next.provider] ?? "";
+  }
+
+  // A key change is stored under the ACTIVE provider so it's restored on return.
+  if (patch.apiKey !== undefined) {
+    if (next.apiKey) keysByProvider[next.provider] = next.apiKey;
+    else delete keysByProvider[next.provider];
+  }
+
   if (next.provider === state.provider && next.model === state.model && next.apiKey === state.apiKey) {
     return;
   }
@@ -88,8 +109,9 @@ export function setCredentials(patch: Partial<Credentials>) {
   emit();
 }
 
-/** Clear the API key (e.g. a "forget key" action). Keeps the provider/model choice. */
+/** Clear the active provider's API key (a "forget key" action). Keeps provider/model. */
 export function clearApiKey() {
+  delete keysByProvider[state.provider];
   setCredentials({ apiKey: "" });
 }
 

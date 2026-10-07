@@ -102,10 +102,11 @@ function ProviderDialog({
 
   function chooseProvider(id: string) {
     if (id === activeProviderId) return;
-    // Switching provider resets the model to that provider's default (empty = default) AND
-    // clears the key — a key belongs to one provider, so carrying it over would be wrong.
-    setCredentials({ provider: id, model: "", apiKey: "" });
-    setKeyDraft("");
+    // Switch provider + reset the model to that provider's default (empty = default). The
+    // store swaps in THIS provider's remembered key (or empty) — kept per provider for the
+    // life of the tab, so moving away and back doesn't lose a key. The keyDraft sync effect
+    // (keyed on activeProviderId) follows.
+    setCredentials({ provider: id, model: "" });
   }
 
   function chooseModel(model: string) {

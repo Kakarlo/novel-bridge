@@ -119,7 +119,8 @@ export function setCredentials(patch: Partial<Credentials>) {
     next.provider === state.provider &&
     next.model === state.model &&
     next.apiKey === state.apiKey &&
-    next.anyKeySet === state.anyKeySet
+    next.anyKeySet === state.anyKeySet &&
+    next.ollamaUrl === state.ollamaUrl
   ) {
     return;
   }

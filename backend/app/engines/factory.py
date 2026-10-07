@@ -114,9 +114,9 @@ def get_engine_for_request(
 
     # Local providers (mock/ollama) never need a key. If the request names the configured
     # local engine, reuse the cached env/fallback engine so ollama's base_url/model/options
-    # (or a test's injected mock) hold.
+    # (or a test's injected mock) hold — but only when no per-request overrides are given.
     if requested not in CLOUD_PROVIDERS:
-        if requested == fallback_name and not model:
+        if requested == fallback_name and not model and not ollama_base_url:
             return _env_engine()
         if requested == "mock":
             return MockEngine()

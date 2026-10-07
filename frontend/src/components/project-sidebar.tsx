@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ModelStatus } from "@/components/model-status";
+import { DataManager } from "@/components/data-manager";
 import { cn } from "@/lib/utils";
 import { langLabel } from "@/lib/format";
 import type { Theme } from "@/hooks/use-theme";
@@ -190,6 +191,7 @@ export function ProjectSidebar({
           <ModelPicker />
           <ModelStatus />
         </div>
+        <DataManager />
         <Button
           size="icon-sm"
           variant="ghost"

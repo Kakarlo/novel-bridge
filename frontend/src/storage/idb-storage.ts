@@ -13,7 +13,7 @@
 // calls POST /api/detect-names to populate detected_names at upload (spaCy stays server-side,
 // design §8.4), and setReferenceDetectedNames persists a refreshed list on Redetect. Detection
 // degrades gracefully — if the compute endpoint is unreachable the reference still saves with
-// detected_names=[]. chapter_number parsing remains backend-only (left null here) until wired.
+// detected_names=[]. chapter_number is now parsed client-side by parseChapterNumber() below.
 
 import Dexie, { type Table } from "dexie";
 
@@ -44,6 +44,20 @@ function newId(): string {
 }
 
 const nowIso = () => new Date().toISOString();
+
+/**
+ * Port of backend/app/services/chapter_number.py — deterministic, pure string logic.
+ * Handles "Chapter N", "Ch. N", "Ch N", decimal interludes (integer part), and bare
+ * leading numbers. Returns null for volume titles and indeterminate cases.
+ */
+function parseChapterNumber(title: string): number | null {
+  if (!title.trim()) return null;
+  if (/\bvol(?:ume|\.?)?\s*\d+/i.test(title)) return null; // volume prefix → can't be a single int
+  const kwMatch = title.match(/\bch(?:apter|\.?)\s*[-:.]?\s*(\d+)/i);
+  if (kwMatch) return parseInt(kwMatch[1], 10);
+  const leadMatch = title.match(/^\s*(\d+)\b/);
+  return leadMatch ? parseInt(leadMatch[1], 10) : null;
+}
 
 class NbDexie extends Dexie {
   projects!: Table<Project, string>;
@@ -142,7 +156,7 @@ export class IndexedDbStorage implements StorageService {
       title: input.title,
       content: input.content,
       created_at: nowIso(),
-      chapter_number: null,
+      chapter_number: parseChapterNumber(input.title),
       summary: null,
       candidate_terms: [],
       detected_names: detectedNames,

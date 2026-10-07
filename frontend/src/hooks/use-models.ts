@@ -12,35 +12,34 @@ export interface ModelsState {
   providers: ModelProvider[];
   // The configured/active default model for the selected provider (ModelsResponse.current).
   current: string;
+  // Call this to re-probe the active provider immediately (e.g. after setting a custom URL).
+  refresh: () => void;
 }
 
 /**
  * Fetch GET /api/models for the CURRENTLY SELECTED provider (cred-aware) and adapt it into the
  * provider-shaped view model the picker consumes.
  *
- * The backend returns models for one provider at a time (the ?provider= query the client adds
- * from the credential store). So we render every known provider from the static catalog and
- * fill the selected provider's `models`/`reachable` from the response; the others stay listed
- * but empty (the picker shows "add a key" / "select to load"). Refetches whenever the chosen
- * provider or the API key changes, so entering a key immediately lists that provider's models.
- * A failed/unreachable fetch leaves the selected provider empty (reachable=false) — it never
- * throws.
+ * Refetches when provider, apiKey, OR ollamaUrl changes — so entering a custom Ollama URL
+ * takes effect immediately without switching providers (task 23.5 fix).
  */
 export function useModels(): ModelsState {
-  const { provider: selectedProvider, apiKey } = useCredentials();
+  const { provider: selectedProvider, apiKey, ollamaUrl } = useCredentials();
   const activeId = selectedProvider || DEFAULT_PROVIDER_ID;
 
   const [state, setState] = useState<ModelsState>({
     loading: true,
     providers: emptyCatalog(activeId),
     current: "",
+    refresh: () => {},
   });
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true }));
     try {
       const res = await api.listModels();
-      setState({
+      setState((s) => ({
+        ...s,
         loading: false,
         current: res.current,
         providers: PROVIDERS.map((p) =>
@@ -54,11 +53,10 @@ export function useModels(): ModelsState {
               }
             : unloadedProvider(p.id)
         ),
-      });
+      }));
     } catch {
-      // Backend/engine unreachable or key rejected — render the selected provider as
-      // present-but-empty so the picker shows an honest "unavailable" state (never vanishes).
-      setState({
+      setState((s) => ({
+        ...s,
         loading: false,
         current: "",
         providers: PROVIDERS.map((p) =>
@@ -66,16 +64,20 @@ export function useModels(): ModelsState {
             ? { id: p.id, label: p.label, models: [], reachable: false, needs_key: p.needsKey }
             : unloadedProvider(p.id)
         ),
-      });
+      }));
     }
-  }, [activeId]);
+  }, [activeId]); // activeId is the only stable dep for memoisation; ollamaUrl/apiKey are in the effect
 
-  // Refetch when the selected provider or the API key changes (apiKey in the dep list so
-  // entering/clearing a key re-lists the provider's models).
+  // Re-expose refresh on every load change so the picker can call it.
+  useEffect(() => {
+    setState((s) => ({ ...s, refresh: load }));
+  }, [load]);
+
+  // Refetch when provider, API key, OR custom Ollama URL changes.
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, apiKey]);
+  }, [load, apiKey, ollamaUrl]);
 
   return state;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, KeyRound, Settings2 } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, Settings2, Wifi } from "lucide-react";
 
 import { DEFAULT_PROVIDER_ID, PROVIDERS, providerNeedsKey } from "@/api/providers";
 import { useModels } from "@/hooks/use-models";
@@ -33,7 +33,7 @@ import { ModelStatus } from "@/components/model-status";
 export function ModelPicker() {
   const creds = useCredentials();
   const activeProviderId = creds.provider || DEFAULT_PROVIDER_ID;
-  const { loading, providers, current } = useModels();
+  const { loading, providers, current, refresh } = useModels();
 
   const [open, setOpen] = useState(false);
 
@@ -70,6 +70,8 @@ export function ModelPicker() {
         selectedModel={creds.model}
         serverDefaultModel={current}
         ollamaUrl={creds.ollamaUrl}
+        onTestConnection={refresh}
+        connectionLoading={loading}
       />
     </>
   );
@@ -84,6 +86,8 @@ interface ProviderDialogProps {
   selectedModel: string;
   serverDefaultModel: string;
   ollamaUrl: string;
+  onTestConnection: () => void;
+  connectionLoading: boolean;
 }
 
 function ProviderDialog({
@@ -95,6 +99,8 @@ function ProviderDialog({
   selectedModel,
   serverDefaultModel,
   ollamaUrl,
+  onTestConnection,
+  connectionLoading,
 }: ProviderDialogProps) {
   // Local drafts so typing doesn't re-probe on every keystroke; committed on blur / Enter.
   // Provider/model selects commit immediately (cheap, no network per char).
@@ -172,19 +178,38 @@ function ProviderDialog({
           {activeProviderId === "ollama" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ollama-url-input">Ollama server URL</Label>
-              <Input
-                id="ollama-url-input"
-                type="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="http://localhost:11434"
-                value={urlDraft}
-                onChange={(e) => setUrlDraft(e.target.value)}
-                onBlur={commitUrl}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitUrl();
-                }}
-              />
+              <div className="flex items-center gap-1.5">
+                <Input
+                  id="ollama-url-input"
+                  type="url"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="http://localhost:11434"
+                  value={urlDraft}
+                  onChange={(e) => setUrlDraft(e.target.value)}
+                  onBlur={commitUrl}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      commitUrl();
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={connectionLoading}
+                  onClick={() => {
+                    commitUrl(); // save any draft before probing
+                    onTestConnection();
+                  }}
+                  title="Test connection and refresh model list"
+                >
+                  {connectionLoading ? <Loader2 className="animate-spin" /> : <Wifi />}
+                  {connectionLoading ? "Testing…" : "Test"}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 {ollamaUrl ? `Using: ${ollamaUrl}` : "Leave blank to use the server's configured Ollama address."}
               </p>

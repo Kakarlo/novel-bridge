@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Clock, Trash2, X } from "lucide-react";
 
-import { api } from "@/api/client";
 import type { Translation } from "@/api/types";
+import { getStorage } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -32,7 +32,7 @@ export function HistoryPanel({ projectId, refreshKey, activeId, onClose, onSelec
   useEffect(() => {
     let active = true;
     setLoading(true);
-    api
+    getStorage()
       .listTranslations(projectId)
       .then((data) => active && setItems(data))
       .catch((e) => active && toast.error(e instanceof Error ? e.message : "Failed to load history"))
@@ -43,7 +43,7 @@ export function HistoryPanel({ projectId, refreshKey, activeId, onClose, onSelec
   }, [projectId, refreshKey]);
 
   async function handleDelete(t: Translation) {
-    await api.deleteTranslation(t.id);
+    await getStorage().deleteTranslation(t.id);
     setItems((prev) => prev.filter((item) => item.id !== t.id));
     onDeleted?.(t.id);
     toast.success("Translation deleted");

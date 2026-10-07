@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BookA, Check, Pencil, Plus, ThumbsDown, ThumbsUp, Trash2, Undo2, X } from "lucide-react";
 
-import { api, ApiError } from "@/api/client";
+import { ApiError } from "@/api/client";
 import type { Gender, GlossaryCategory, GlossaryEntry, GlossaryStatus } from "@/api/types";
+import { getStorage } from "@/storage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ const CATEGORY_LABELS: Record<GlossaryCategory, string> = {
   term: "Term",
   location: "Location",
   organization: "Organization",
-  item: "Item"
+  item: "Item",
 };
 
 export function GlossaryTab({
@@ -47,7 +48,7 @@ export function GlossaryTab({
   const load = useCallback(() => {
     let alive = true;
     setLoading(true);
-    api
+    getStorage()
       .listGlossary(projectId)
       .then((data) => alive && setEntries(sortEntries(data)))
       .catch((e) => alive && toast.error(e instanceof Error ? e.message : "Load failed"))
@@ -83,7 +84,7 @@ export function GlossaryTab({
   }
 
   async function handleCreate(draft: EditorDraft) {
-    const entry = await api.createGlossary(projectId, {
+    const entry = await getStorage().createGlossary(projectId, {
       surface_form: draft.surfaceForm,
       source_term: draft.sourceTerm || null,
       category: draft.category,
@@ -97,7 +98,7 @@ export function GlossaryTab({
   }
 
   async function handleUpdate(id: string, draft: EditorDraft) {
-    const entry = await api.updateGlossary(id, {
+    const entry = await getStorage().updateGlossary(id, {
       surface_form: draft.surfaceForm,
       source_term: draft.sourceTerm || null,
       category: draft.category,
@@ -112,7 +113,7 @@ export function GlossaryTab({
 
   async function handleStatus(entry: GlossaryEntry, status: GlossaryStatus) {
     try {
-      const updated = await api.setGlossaryStatus(entry.id, status);
+      const updated = await getStorage().setGlossaryStatus(entry.id, status);
       upsertLocal(updated);
       // Approving/rejecting/restoring changes the live-term count -> refresh counts + siblings.
       onGlossaryChanged?.();
@@ -122,7 +123,7 @@ export function GlossaryTab({
   }
 
   async function handleDelete(entry: GlossaryEntry) {
-    await api.deleteGlossary(entry.id);
+    await getStorage().deleteGlossary(entry.id);
     setEntries((prev) => prev.filter((e) => e.id !== entry.id));
     onGlossaryChanged?.();
     toast.success("Entry deleted");

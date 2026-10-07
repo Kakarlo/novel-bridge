@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { api } from "@/api/client";
 import type { Project, ProjectCreate } from "@/api/types";
+import { getStorage } from "@/storage";
 
 export function useProjects() {
+  const storage = getStorage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -12,31 +13,37 @@ export function useProjects() {
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      const data = await api.listProjects();
+      const data = await storage.listProjects();
       setProjects(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load projects");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [storage]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const create = useCallback(async (body: ProjectCreate): Promise<Project> => {
-    const project = await api.createProject(body);
-    setProjects((prev) => [project, ...prev]);
-    toast.success(`Created “${project.name}”`);
-    return project;
-  }, []);
+  const create = useCallback(
+    async (body: ProjectCreate): Promise<Project> => {
+      const project = await storage.createProject(body);
+      setProjects((prev) => [project, ...prev]);
+      toast.success(`Created “${project.name}”`);
+      return project;
+    },
+    [storage]
+  );
 
-  const remove = useCallback(async (id: string) => {
-    await api.deleteProject(id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    toast.success("Project deleted");
-  }, []);
+  const remove = useCallback(
+    async (id: string) => {
+      await storage.deleteProject(id);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Project deleted");
+    },
+    [storage]
+  );
 
   return { projects, loading, error, refresh, create, remove };
 }

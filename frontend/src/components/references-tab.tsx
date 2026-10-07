@@ -4,6 +4,7 @@ import { FileText, Pencil, Plus, ScanSearch, Sparkles, Trash2, Wand2, X } from "
 
 import { api, ApiError } from "@/api/client";
 import type { Project, ReferenceChapter } from "@/api/types";
+import { getStorage } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ export function ReferencesTab({
     setLoading(true);
     setSelectedId(null);
     setComposing(false);
-    Promise.all([api.listReferences(projectId), api.getProject(projectId)])
+    Promise.all([getStorage().listReferences(projectId), getStorage().getProject(projectId)])
       .then(([refs, detail]) => {
         if (!active) return;
         setItems(refs);
@@ -65,7 +66,7 @@ export function ReferencesTab({
   });
 
   async function handleDelete(ref: ReferenceChapter) {
-    await api.deleteReference(ref.id);
+    await getStorage().deleteReference(ref.id);
     setItems((prev) => prev.filter((r) => r.id !== ref.id));
     if (selectedId === ref.id) setSelectedId(null);
     onGlossaryChanged?.(); // refresh the references count badge
@@ -392,7 +393,7 @@ function ReferenceComposer({
       setSubmitting(true);
       // Upload is lightweight — stores text + runs the offline name detector. No AI call;
       // the style profile is extracted separately (deliberate action, not on every add).
-      const ref = await api.addReference(projectId, {
+      const ref = await getStorage().addReference(projectId, {
         title: title.trim(),
         content: content.trim(),
       });
@@ -581,7 +582,7 @@ function DetectedNames({
 
   useEffect(() => {
     let active = true;
-    api
+    getStorage()
       .listGlossary(projectId)
       .then((entries) => {
         if (active) setInGlossary(new Set(entries.map((e) => e.surface_form.toLowerCase())));
@@ -612,8 +613,8 @@ function DetectedNames({
     const en = term.trim();
     if (!en) return;
     try {
-      await api.createGlossary(projectId, { surface_form: en, status });
-      const updated = await api.resolveReferenceTerm(reference.id, en);
+      await getStorage().createGlossary(projectId, { surface_form: en, status });
+      const updated = await getStorage().resolveReferenceTerm(reference.id, en);
       onReferenceUpdated(updated);
       onGlossaryChanged?.();
       toast.success(

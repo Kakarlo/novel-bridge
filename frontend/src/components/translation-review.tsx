@@ -4,6 +4,7 @@ import { ArrowRight, Check, ChevronRight, Loader2, Sparkles, X } from "lucide-re
 
 import { api, ApiError } from "@/api/client";
 import type { GlossaryPairSuggestion } from "@/api/types";
+import { getStorage } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -79,7 +80,7 @@ export function TranslationReview({
       // Upsert on surface_form via the existing glossary write — no new endpoint. A paired
       // entry (source_term set) defaults to approved on the backend, so it steers the next
       // translation immediately. Carry the model's category/gender/note through.
-      await api.createGlossary(projectId, {
+      await getStorage().createGlossary(projectId, {
         surface_form: c.surface_form,
         source_term: c.source_term,
         category: c.category,

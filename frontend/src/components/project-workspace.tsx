@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookA, FileText, Languages } from "lucide-react";
 
-import { api } from "@/api/client";
 import type { ProjectDetail, SourceLang } from "@/api/types";
+import { getStorage } from "@/storage";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +46,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const loadDetail = useCallback(async () => {
-    const data = await api.getProject(projectId);
+    const data = await getStorage().getProject(projectId);
     setDetail(data);
     return data;
   }, [projectId]);

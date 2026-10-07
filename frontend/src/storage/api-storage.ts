@@ -66,6 +66,12 @@ export class ApiStorageService implements StorageService {
   }
 
   // --- translations ---
+  // The API backend auto-saves on the translate SSE stream, so the client never saves
+  // explicitly here. Present to satisfy the interface; the translate tab only calls
+  // saveTranslation on the IndexedDB backend.
+  saveTranslation(): Promise<Translation> {
+    return Promise.reject(new Error("The API backend auto-saves translations server-side."));
+  }
   listTranslations(projectId: string): Promise<Translation[]> {
     return api.listTranslations(projectId);
   }

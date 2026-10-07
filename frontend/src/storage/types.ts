@@ -27,6 +27,15 @@ import type {
   Translation,
 } from "@/api/types";
 
+// Fields the client provides when saving a completed translation (design §5: auto-save moves
+// to the client). id/created_at are assigned by the store.
+export interface SaveTranslationInput {
+  source_lang: Translation["source_lang"];
+  raw_text: string;
+  output_text: string;
+  model_used: string;
+}
+
 // A portable backup/restore bundle (JSON export/import, design §4). Not produced by the API
 // backend — the IndexedDB implementation fills this in a later step.
 export interface ExportBundle {
@@ -62,6 +71,9 @@ export interface StorageService {
   deleteGlossary(entryId: string): Promise<void>;
 
   // --- translations ---
+  // Persist a completed translation client-side (used by the IndexedDB backend; the API
+  // backend auto-saves server-side on the translate stream and ignores this).
+  saveTranslation(projectId: string, input: SaveTranslationInput): Promise<Translation>;
   listTranslations(projectId: string): Promise<Translation[]>;
   getTranslation(tid: string): Promise<Translation>;
   deleteTranslation(tid: string): Promise<void>;

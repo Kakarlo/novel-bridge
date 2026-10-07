@@ -27,7 +27,7 @@ import type {
   ReferenceCreate,
   Translation,
 } from "@/api/types";
-import type { ExportBundle, StorageService } from "./types";
+import type { ExportBundle, SaveTranslationInput, StorageService } from "./types";
 
 function newId(): string {
   // uuid hex (no dashes), matching the backend's new_id() shape.
@@ -91,12 +91,19 @@ export class IndexedDbStorage implements StorageService {
   }
 
   async deleteProject(id: string): Promise<void> {
-    await this.db.transaction("rw", this.db.projects, this.db.references, this.db.glossary, this.db.translations, async () => {
-      await this.db.projects.delete(id);
-      await this.db.references.where("project_id").equals(id).delete();
-      await this.db.glossary.where("project_id").equals(id).delete();
-      await this.db.translations.where("project_id").equals(id).delete();
-    });
+    await this.db.transaction(
+      "rw",
+      this.db.projects,
+      this.db.references,
+      this.db.glossary,
+      this.db.translations,
+      async () => {
+        await this.db.projects.delete(id);
+        await this.db.references.where("project_id").equals(id).delete();
+        await this.db.glossary.where("project_id").equals(id).delete();
+        await this.db.translations.where("project_id").equals(id).delete();
+      }
+    );
   }
 
   // --- references ---
@@ -154,7 +161,8 @@ export class IndexedDbStorage implements StorageService {
       const merged: GlossaryEntry = {
         ...existing,
         surface_form: input.surface_form,
-        source_term: input.source_term !== undefined && input.source_term !== null ? input.source_term : existing.source_term,
+        source_term:
+          input.source_term !== undefined && input.source_term !== null ? input.source_term : existing.source_term,
         status: input.status ?? existing.status,
         category: input.category ?? existing.category,
         gender: input.gender !== undefined && input.gender !== null ? input.gender : existing.gender,
@@ -207,6 +215,20 @@ export class IndexedDbStorage implements StorageService {
   }
 
   // --- translations ---
+  async saveTranslation(projectId: string, input: SaveTranslationInput): Promise<Translation> {
+    const tr: Translation = {
+      id: newId(),
+      project_id: projectId,
+      source_lang: input.source_lang,
+      raw_text: input.raw_text,
+      output_text: input.output_text,
+      model_used: input.model_used,
+      created_at: nowIso(),
+    };
+    await this.db.translations.add(tr);
+    return tr;
+  }
+
   async listTranslations(projectId: string): Promise<Translation[]> {
     const all = await this.db.translations.where("project_id").equals(projectId).toArray();
     return all.sort((a, b) => b.created_at.localeCompare(a.created_at)); // newest first
@@ -249,28 +271,40 @@ export class IndexedDbStorage implements StorageService {
     const glossary = bundle.glossary ?? [];
     const translations = bundle.translations ?? [];
 
-    await this.db.transaction("rw", this.db.projects, this.db.references, this.db.glossary, this.db.translations, async () => {
-      if (mode === "replace") {
-        await Promise.all([this.db.projects.clear(), this.db.references.clear(), this.db.glossary.clear(), this.db.translations.clear()]);
-      }
-      // Upsert by id (bulkPut). Glossary dedupe-on-surface_form for merge is handled below.
-      await this.db.projects.bulkPut(projects);
-      await this.db.references.bulkPut(references);
-      await this.db.translations.bulkPut(translations);
+    await this.db.transaction(
+      "rw",
+      this.db.projects,
+      this.db.references,
+      this.db.glossary,
+      this.db.translations,
+      async () => {
+        if (mode === "replace") {
+          await Promise.all([
+            this.db.projects.clear(),
+            this.db.references.clear(),
+            this.db.glossary.clear(),
+            this.db.translations.clear(),
+          ]);
+        }
+        // Upsert by id (bulkPut). Glossary dedupe-on-surface_form for merge is handled below.
+        await this.db.projects.bulkPut(projects);
+        await this.db.references.bulkPut(references);
+        await this.db.translations.bulkPut(translations);
 
-      if (mode === "replace") {
-        await this.db.glossary.bulkPut(glossary);
-      } else {
-        // Merge: dedupe each incoming entry on (project_id, surface_form) case-insensitively,
-        // reusing the existing row's id so a shared glossary combines instead of duplicating.
-        for (const incoming of glossary) {
-          const low = incoming.surface_form.toLowerCase();
-          const existing = (await this.db.glossary.where("project_id").equals(incoming.project_id).toArray()).find(
-            (e) => e.surface_form.toLowerCase() === low
-          );
-          await this.db.glossary.put(existing ? { ...incoming, id: existing.id } : incoming);
+        if (mode === "replace") {
+          await this.db.glossary.bulkPut(glossary);
+        } else {
+          // Merge: dedupe each incoming entry on (project_id, surface_form) case-insensitively,
+          // reusing the existing row's id so a shared glossary combines instead of duplicating.
+          for (const incoming of glossary) {
+            const low = incoming.surface_form.toLowerCase();
+            const existing = (await this.db.glossary.where("project_id").equals(incoming.project_id).toArray()).find(
+              (e) => e.surface_form.toLowerCase() === low
+            );
+            await this.db.glossary.put(existing ? { ...incoming, id: existing.id } : incoming);
+          }
         }
       }
-    });
+    );
   }
 }

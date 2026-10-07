@@ -19,6 +19,7 @@ import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang
 import { setStreaming } from "@/hooks/use-active-stream";
 import { useUnloadWarning } from "@/hooks/use-unload-warning";
 import { getCredentials } from "@/hooks/use-credentials";
+import { getStorage, getStorageBackend } from "@/storage";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -229,8 +230,10 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
         { raw_text: raw, source_lang: lang, ...(selection ? { selection } : {}) },
         controller.signal
       );
+      let acc = "";
       for await (const event of stream) {
         if (isContentEvent(event)) {
+          acc += event.content;
           setOutput((prev) => prev + event.content);
         } else if (isInfoEvent(event)) {
           setInfoMsg(event.info);
@@ -241,8 +244,25 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
           toast.error("Translation failed");
           return;
         } else if (isDoneEvent(event)) {
+          // Auto-save: the API backend already persisted server-side (event.translation_id).
+          // On the IndexedDB backend nothing was saved server-side, so the client saves the
+          // streamed result locally and uses that id (design §5: auto-save moves to the client).
+          let savedId = event.translation_id;
+          if (getStorageBackend() === "idb") {
+            try {
+              const saved = await getStorage().saveTranslation(projectId, {
+                source_lang: lang,
+                raw_text: raw,
+                output_text: acc.trim(),
+                model_used: getCredentials().model || "unknown",
+              });
+              savedId = saved.id;
+            } catch {
+              toast.error("Could not save the translation locally");
+            }
+          }
           setStatus("done");
-          setViewingId(event.translation_id);
+          setViewingId(savedId);
           setHistoryKey((k) => k + 1);
           // Saved to history now — the draft is no longer needed.
           clearDraft(projectId);
@@ -396,7 +416,10 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
             {/* Experimental review surface — lives on the source side (the user reads the
                 English pane, so it won't cover the translation). Only for a persisted
                 translation; 404/empty from the gated endpoints renders nothing. */}
-            {viewingId && (status === "viewing" || status === "done") && (
+            {/* The review panel reads the SOURCE chapter from the server by id; on the local
+                (IndexedDB) backend the server has no such record, so it's shown only on the
+                API backend. (Client-side review is a later follow-up.) */}
+            {viewingId && (status === "viewing" || status === "done") && getStorageBackend() === "api" && (
               <TranslationReview projectId={projectId} translationId={viewingId} onGlossaryChanged={onSaved} />
             )}
             <Textarea

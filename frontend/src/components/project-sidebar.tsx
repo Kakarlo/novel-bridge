@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ModelStatus } from "@/components/model-status";
 import { DataManager } from "@/components/data-manager";
 import { cn } from "@/lib/utils";
 import { langLabel } from "@/lib/format";
@@ -189,7 +188,6 @@ export function ProjectSidebar({
       <div className="space-y-2 border-t p-3">
         <div className="min-w-0">
           <ModelPicker />
-          <ModelStatus />
         </div>
         <div className="flex items-center justify-between gap-2">
           <DataManager />

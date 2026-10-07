@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cpu, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Settings2 } from "lucide-react";
 
 import { DEFAULT_PROVIDER_ID, PROVIDERS, providerNeedsKey } from "@/api/providers";
 import { useModels } from "@/hooks/use-models";
@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ModelStatus } from "@/components/model-status";
 
 /**
  * Interactive provider + model + API-key picker for the translate toolbar (BYO-key).
@@ -39,20 +40,18 @@ export function ModelPicker() {
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
+      {/* The health status (dot + model + engine) IS the picker trigger — one clickable row
+          instead of a separate status card above a provider button. */}
+      <button
+        type="button"
         onClick={() => setOpen(true)}
-        data-icon="inline-start"
-        className="max-w-[16rem]"
-        title="Choose the translation provider, model, and API key"
+        title={`${activeProviderLabel} · ${loading ? "loading models…" : activeModelLabel} — click to change`}
+        aria-label="Change translation provider, model, and API key"
+        className="flex w-full items-center gap-1 rounded-lg border bg-background/60 px-2.5 py-2 text-left transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
-        <Cpu className="size-4 text-muted-foreground" />
-        <span className="truncate">
-          {activeProviderLabel}
-          <span className="text-muted-foreground"> · {loading ? "…" : activeModelLabel}</span>
-        </span>
-      </Button>
+        <ModelStatus asTrigger />
+        <Settings2 className="size-3.5 shrink-0 text-muted-foreground" />
+      </button>
 
       <ProviderDialog
         open={open}

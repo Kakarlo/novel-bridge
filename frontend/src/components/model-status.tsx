@@ -13,7 +13,12 @@ import { useModels } from "@/hooks/use-models";
  * obvious), and distinguishes "backend down" from "LLM engine down". Groundwork
  * for a future model picker.
  */
-export function ModelStatus() {
+/**
+ * `asTrigger` renders the status inline (no card border/background) so it can be the content
+ * of the model-picker button — the health dot + model + engine double as the picker's label,
+ * merging the two footer rows into one clickable control. Default renders the standalone card.
+ */
+export function ModelStatus({ asTrigger = false }: { asTrigger?: boolean }) {
   const health = useHealth();
   const creds = useCredentials();
   const { current } = useModels();
@@ -43,7 +48,9 @@ export function ModelStatus() {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border bg-background/60 px-2.5 py-2 text-xs">
+    <div
+      className={cn("flex items-center gap-2 text-xs", !asTrigger && "rounded-lg border bg-background/60 px-2.5 py-2")}
+    >
       <span
         className={cn("size-2 shrink-0 rounded-full", dotClass)}
         role="img"

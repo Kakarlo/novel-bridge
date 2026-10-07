@@ -35,8 +35,11 @@ export interface Credentials {
   provider: string;
   /** Model id within the provider. Empty = use that provider's default. */
   model: string;
-  /** The user's API key for a cloud provider. Empty for local providers. Session-only. */
+  /** The ACTIVE provider's API key. Empty for local providers. Session-only. */
   apiKey: string;
+  /** True if ANY provider has a key set this session (not just the active one). Drives the
+   *  "you'll lose your key on refresh" guard, which must fire regardless of active provider. */
+  anyKeySet: boolean;
 }
 
 const SELECTION_KEY = "nb:llm-selection"; // {provider, model} — localStorage (persisted)
@@ -57,7 +60,7 @@ function readInitial(): Credentials {
     /* ignore corrupt/unavailable storage */
   }
   // apiKey always starts empty — a refresh clears it (memory-only), by design.
-  return { provider, model, apiKey: "" };
+  return { provider, model, apiKey: "", anyKeySet: false };
 }
 
 let state: Credentials = readInitial();
@@ -101,7 +104,14 @@ export function setCredentials(patch: Partial<Credentials>) {
     else delete keysByProvider[next.provider];
   }
 
-  if (next.provider === state.provider && next.model === state.model && next.apiKey === state.apiKey) {
+  next.anyKeySet = Object.values(keysByProvider).some((k) => k.trim().length > 0);
+
+  if (
+    next.provider === state.provider &&
+    next.model === state.model &&
+    next.apiKey === state.apiKey &&
+    next.anyKeySet === state.anyKeySet
+  ) {
     return;
   }
   state = next;

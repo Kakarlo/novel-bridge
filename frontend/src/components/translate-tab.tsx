@@ -17,6 +17,7 @@ import {
 import { api } from "@/api/client";
 import { isContentEvent, isDoneEvent, isErrorEvent, isInfoEvent, type SourceLang, type Translation } from "@/api/types";
 import { setStreaming } from "@/hooks/use-active-stream";
+import { useUnloadWarning } from "@/hooks/use-unload-warning";
 import { getCredentials } from "@/hooks/use-credentials";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,20 +150,14 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
     saveDraft(projectId, { raw, lang, output, unfinished: status === "streaming" });
   }, [projectId, raw, lang, output, status]);
 
-  // Publish streaming state app-wide so a project switch can be guarded (field-fix #1),
-  // and warn on refresh/close while a stream is live. Clear the flag on unmount.
+  // Publish streaming state app-wide so a project switch can be guarded (field-fix #1).
   useEffect(() => {
-    const isStreaming = status === "streaming";
-    setStreaming(isStreaming);
-    if (!isStreaming) return;
-
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = ""; // triggers the browser's native "Leave site?" prompt
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    setStreaming(status === "streaming");
   }, [status]);
+
+  // Warn on refresh/close while a stream is live. Shared guard → one listener / one native
+  // prompt, co-existing with the API-key warning in the model picker.
+  useUnloadWarning("translation-stream", status === "streaming");
 
   useEffect(() => () => setStreaming(false), []);
 

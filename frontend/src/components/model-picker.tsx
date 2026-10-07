@@ -4,6 +4,7 @@ import { Eye, EyeOff, KeyRound, Settings2 } from "lucide-react";
 import { DEFAULT_PROVIDER_ID, PROVIDERS, providerNeedsKey } from "@/api/providers";
 import { useModels } from "@/hooks/use-models";
 import { useCredentials, setCredentials, clearApiKey } from "@/hooks/use-credentials";
+import { useUnloadWarning } from "@/hooks/use-unload-warning";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,16 +43,10 @@ export function ModelPicker() {
   // loses it (user must re-paste). This is scoped to the key's lifetime; it is deliberately
   // separate from the translate/project-switch guardrail (use-active-stream), which concerns a
   // live stream, not the key. No key set → no prompt.
-  const hasKeySet = creds.apiKey.trim().length > 0;
-  useEffect(() => {
-    if (!hasKeySet) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = ""; // triggers the browser's native "Leave site?" prompt
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [hasKeySet]);
+  // Warn on refresh/close while ANY provider has a key set (not just the active one) — the
+  // key is memory-only, so a reload loses it. Routed through the shared unload guard so it
+  // and the live-stream warning share one listener / one native prompt.
+  useUnloadWarning("api-key", creds.anyKeySet);
 
   return (
     <>

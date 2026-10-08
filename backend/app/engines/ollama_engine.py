@@ -22,7 +22,7 @@ from app.engines.base import (
     TranslationRequest,
 )
 from app.models import SourceLang
-from app.services.prompt import (
+from app.services.prompts.builders import (
     build_extraction_messages,
     build_glossary_pairing_messages,
     build_style_extraction_messages,

@@ -33,7 +33,7 @@ from app.engines.base import (
 )
 from app.engines.ollama_engine import _parse_extraction, _parse_glossary_pairs
 from app.models import SourceLang
-from app.services.prompt import (
+from app.services.prompts.builders import (
     build_extraction_messages,
     build_glossary_pairing_messages,
     build_style_extraction_messages,

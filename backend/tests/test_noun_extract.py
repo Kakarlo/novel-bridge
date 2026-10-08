@@ -14,7 +14,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.noun_extract import _get_nlp, _regex_proper_nouns, extract_proper_nouns
+from app.services.noun_extract import (
+    _get_nlp,
+    _regex_proper_nouns,
+    extract_proper_nouns,
+)
 
 
 def _ner_available() -> bool:

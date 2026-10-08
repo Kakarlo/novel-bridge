@@ -87,6 +87,12 @@ export class IndexedDbStorage implements StorageService {
   }
 
   async createProject(input: ProjectCreate): Promise<Project> {
+    const existing = (await this.db.projects.toArray()).find(
+      (p) => p.name.trim().toLowerCase() === input.name.trim().toLowerCase()
+    );
+    if (existing) {
+      throw new Error(`Series "${input.name}" already exists`);
+    }
     const project: Project = {
       id: newId(),
       name: input.name,
@@ -96,6 +102,27 @@ export class IndexedDbStorage implements StorageService {
     };
     await this.db.projects.add(project);
     return project;
+  }
+
+  async updateProject(id: string, input: ProjectCreate): Promise<Project> {
+    const duplicate = (await this.db.projects.toArray()).find(
+      (p) => p.id !== id && p.name.trim().toLowerCase() === input.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error(`Series "${input.name}" already exists`);
+    }
+    const project = await this.db.projects.get(id);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const updated: Project = {
+      ...project,
+      name: input.name,
+      source_lang: input.source_lang ?? null,
+    };
+    await this.db.projects.put(updated);
+    return updated;
   }
 
   async getProject(id: string): Promise<ProjectDetail> {

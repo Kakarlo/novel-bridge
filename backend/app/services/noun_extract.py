@@ -237,9 +237,7 @@ def _is_name_like(name: str) -> bool:
     content = [t for t in tokens if t.lower() not in _LEADING_DROP]
     if not content:
         return False
-    if len(content) == 1 and content[0].lower() in (_STOPWORDS | _INTERJECTIONS):
-        return False
-    return True
+    return not (len(content) == 1 and content[0].lower() in _STOPWORDS | _INTERJECTIONS)
 
 
 def _fold_aliases(counts: Counter[str], display: dict[str, str]) -> None:
@@ -376,7 +374,7 @@ _STOPWORDS = {
     "have", "has", "had", "will", "would", "shall", "should", "can", "could", "may",
     "might", "must", "not", "no", "yes", "now", "once", "after", "before", "while",
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-    "january", "february", "march", "april", "may", "june", "july", "august",
+    "january", "february", "march", "april", "june", "july", "august",
     "september", "october", "november", "december",
     "chapter", "part", "volume", "prologue", "epilogue",
     # Conjunctive adverbs / interjections / quantifiers that commonly OPEN a sentence and
@@ -387,7 +385,7 @@ _STOPWORDS = {
     "perhaps", "maybe", "indeed", "surely", "certainly", "clearly", "obviously",
     "everyone", "everything", "everywhere", "someone", "something", "somewhere",
     "anyone", "anything", "nobody", "nothing", "ah", "oh", "eh", "hmm", "well",
-    "yes", "okay", "ok", "please", "thanks", "hello", "goodbye",
+    "okay", "ok", "please", "thanks", "hello", "goodbye",
     "all", "some", "many", "most", "few", "each", "every", "both", "either", "neither",
     "because", "since", "unless", "until", "whether", "whereas",
 }

@@ -146,16 +146,15 @@ async def extract_project_style(
 
     try:
         style = await engine.extract_style(sample, lang)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(502, f"Style extraction failed: {exc}") from exc
     if not style.strip():
         raise HTTPException(502, "Style extraction returned nothing")
 
     # DB-backed path persists server-side so the API client gets the stored project state;
     # the stateless path persists in the browser (the caller does it).
-    if not (body and body.content):
-        if not store.update_project_style(pid, style):
-            raise HTTPException(404, "Project not found")
+    if not (body and body.content) and not store.update_project_style(pid, style):
+        raise HTTPException(404, "Project not found")
     return StyleProfileResult(style_profile=style)
 
 

@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.config import Settings, get_settings
-from app.deps import get_request_api_key, get_storage, get_translation_engine, resolve_request_engine
+from app.deps import (
+    get_request_api_key,
+    get_storage,
+    get_translation_engine,
+    resolve_request_engine,
+)
 from app.engines.base import TranslationEngine, TranslationRequest
 from app.models import TranslateRequest
 from app.services import context_builder as cb
 from app.services.term_match import find_occurrences
 from app.storage.base import StorageService
-
-import logging
 
 logger = logging.getLogger(__name__)
 

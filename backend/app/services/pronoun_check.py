@@ -24,8 +24,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from app.models import GlossaryEntry
 from pydantic import BaseModel
+
+from app.models import GlossaryEntry
 
 # Gendered subject/object/possessive pronouns we can judge. "they/their" is neutral and
 # never flagged (a legitimate choice for unknown/ambiguous).

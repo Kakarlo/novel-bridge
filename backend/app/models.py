@@ -252,7 +252,7 @@ class StyleExtractBody(BaseModel):
 
     content: str | None = None
     source_lang: SourceLang | None = None
-    selection: "ModelSelection | None" = None
+    selection: ModelSelection | None = None
 
     @field_validator("content")
     @classmethod
@@ -329,7 +329,7 @@ class GlossaryExtractBody(BaseModel):
         before (the API-storage backend's behavior, unchanged).
     """
 
-    selection: "ModelSelection | None" = None
+    selection: ModelSelection | None = None
     raw_text: str | None = None
     output_text: str | None = None
     # Source language of ``raw_text`` on the stateless path (the server has no DB row to read

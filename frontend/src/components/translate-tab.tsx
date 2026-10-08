@@ -230,9 +230,17 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
       // Per-request engine override (BYO-key): send the chosen provider/model as `selection`
       // (the API key rides on the X-LLM-Api-Key header, added by the client). Omit the
       // selection entirely when nothing is chosen so the server falls back to its default.
-      const { provider, model } = getCredentials();
+      const { provider, model, ollamaUrl } = getCredentials();
+
       const selection =
-        provider || model ? { ...(provider ? { provider } : {}), ...(model ? { model } : {}) } : undefined;
+        provider || model || ollamaUrl
+          ? {
+              ...(provider && { provider }),
+              ...(model && { model }),
+              ...(ollamaUrl && { ollama_base_url: ollamaUrl }),
+            }
+          : undefined;
+      console.log(selection);
       // Local-first (task 23.4b): on the IndexedDB backend the browser owns all data, so it
       // ships the glossary + style profile in the body and asks the server NOT to save
       // (the client persists the result locally on the done event — task 23.4a). On the API

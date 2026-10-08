@@ -1,13 +1,13 @@
+import { ArrowRight, Check, ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Check, ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { GlossaryPairSuggestion, SourceLang } from "@/api/types";
-import { getStorage, getStorageBackend } from "@/storage";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { getStorage, getStorageBackend } from "@/storage";
 
 /**
  * Lightweight review surface for a SAVED translation (FRONTEND_TODO #1 + #3). Two groups
@@ -92,6 +92,7 @@ export function TranslationReview({
         surface_form: c.surface_form,
         source_term: c.source_term,
         category: c.category,
+        status: "approved",
         gender: c.gender ?? undefined,
         note: c.note ?? undefined,
       });

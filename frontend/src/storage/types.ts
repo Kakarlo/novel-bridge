@@ -53,6 +53,7 @@ export interface StorageService {
   // --- projects ---
   listProjects(): Promise<Project[]>;
   createProject(input: ProjectCreate): Promise<Project>;
+  updateProject(id: string, input: ProjectCreate): Promise<Project>;
   getProject(id: string): Promise<ProjectDetail>;
   deleteProject(id: string): Promise<void>;
   // Persist a project's writing-style profile (null clears it). The style itself is computed

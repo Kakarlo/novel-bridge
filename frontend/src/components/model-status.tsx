@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
  * engine status, and settings control to appear as a single unified sidebar
  * action while reusing the same presentation component in other contexts.
  */
-``
 
 interface ModelStatusProps {
   asTrigger?: boolean;

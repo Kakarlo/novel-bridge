@@ -10,7 +10,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useIsStreaming } from "@/hooks/use-active-stream";
 
 function App() {
-  const { projects, loading, error, create, remove } = useProjects();
+  const { projects, loading, error, create, update, remove } = useProjects();
   const { theme, toggle: toggleTheme } = useTheme();
   const [activeId, setActiveId] = useState<string | null>(null);
   // A pending project switch awaiting confirmation because a translation is streaming
@@ -63,6 +63,7 @@ function App() {
         onToggleTheme={toggleTheme}
         onSelect={selectProject}
         onCreate={create}
+        onUpdate={update}
         onDelete={async (id) => {
           await remove(id);
           if (id === activeId) setActiveId(null);

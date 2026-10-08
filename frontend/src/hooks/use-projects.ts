@@ -28,10 +28,32 @@ export function useProjects() {
 
   const create = useCallback(
     async (body: ProjectCreate): Promise<Project> => {
-      const project = await storage.createProject(body);
-      setProjects((prev) => [project, ...prev]);
-      toast.success(`Created “${project.name}”`);
-      return project;
+      try {
+        const project = await storage.createProject(body);
+        setProjects((prev) => [project, ...prev]);
+        toast.success(`Created “${project.name}”`);
+        return project;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create series";
+        toast.error(message);
+        throw error;
+      }
+    },
+    [storage]
+  );
+
+  const update = useCallback(
+    async (id: string, body: ProjectCreate): Promise<Project> => {
+      try {
+        const project = await storage.updateProject(id, body);
+        setProjects((prev) => prev.map((p) => (p.id === id ? project : p)));
+        toast.success(`Updated “${project.name}”`);
+        return project;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create series";
+        toast.error(message);
+        throw error;
+      }
     },
     [storage]
   );
@@ -45,5 +67,5 @@ export function useProjects() {
     [storage]
   );
 
-  return { projects, loading, error, refresh, create, remove };
+  return { projects, loading, error, refresh, create, update, remove };
 }

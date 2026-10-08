@@ -28,6 +28,9 @@ export class ApiStorageService implements StorageService {
   createProject(input: ProjectCreate): Promise<Project> {
     return api.createProject(input);
   }
+  updateProject(_id: string, _input: ProjectCreate): Promise<Project> {
+    return Promise.reject(new Error("Project editing is only supported with local (browser) storage."));
+  }
   getProject(id: string): Promise<ProjectDetail> {
     return api.getProject(id);
   }

@@ -1,4 +1,4 @@
-import { BookMarked, ChevronLeft, ChevronRight, Moon, Plus, Sun, Trash2 } from "lucide-react";
+import { BookMarked, ChevronLeft, ChevronRight, Moon, Plus, Sun, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import type { Project, ProjectCreate, SourceLang } from "@/api/types";
@@ -22,6 +22,7 @@ interface ProjectSidebarProps {
   onToggleTheme: () => void;
   onSelect: (id: string) => void;
   onCreate: (body: ProjectCreate) => Promise<Project>;
+  onUpdate: (id: string, body: ProjectCreate) => Promise<Project>;
   onDelete: (id: string) => Promise<void>;
 }
 
@@ -35,9 +36,11 @@ export function ProjectSidebar({
   onToggleTheme,
   onSelect,
   onCreate,
+  onUpdate,
   onDelete,
 }: ProjectSidebarProps) {
   const [adding, setAdding] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [name, setName] = useState("");
   const [lang, setLang] = useState<SourceLang>("zh");
   const [submitting, setSubmitting] = useState(false);
@@ -47,17 +50,32 @@ export function ProjectSidebar({
   });
   const isExpanded = !collapsed;
 
-  async function submitNew(e: React.FormEvent) {
+  async function submitNew(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+
     try {
       setSubmitting(true);
-      const project = await onCreate({ name: trimmed, source_lang: lang });
+      if (editingProject) {
+        await onUpdate(editingProject.id, {
+          name: trimmed,
+          source_lang: lang,
+        });
+        setEditingProject(null);
+        setAdding(false);
+      } else {
+        const project = await onCreate({
+          name: trimmed,
+          source_lang: lang,
+        });
+        onSelect(project.id);
+        setAdding(false);
+      }
       setName("");
       setLang("zh");
-      setAdding(false);
-      onSelect(project.id);
+    } catch {
+      // Error already surfaced via useProjects toast.
     } finally {
       setSubmitting(false);
     }
@@ -124,7 +142,19 @@ export function ProjectSidebar({
             size="icon-xs"
             variant="ghost"
             aria-label="New project"
-            onClick={() => setAdding((v) => !v)}
+            onClick={() => {
+              if (adding) {
+                setAdding(false);
+                setEditingProject(null);
+                setName("");
+                setLang("zh");
+                return;
+              }
+              setEditingProject(null);
+              setName("");
+              setLang("zh");
+              setAdding(true);
+            }}
             aria-expanded={adding}
           >
             <Plus className="transition-transform duration-200" />
@@ -136,7 +166,7 @@ export function ProjectSidebar({
         <form onSubmit={submitNew} className="mx-3 mb-2 space-y-2.5 rounded-lg border bg-background p-3">
           <div className="space-y-1.5">
             <Label htmlFor="new-project-name" className="text-xs">
-              Series name
+              {editingProject ? "Edit series" : "Series name"}
             </Label>
             <Input
               id="new-project-name"
@@ -166,13 +196,14 @@ export function ProjectSidebar({
               variant="ghost"
               onClick={() => {
                 setAdding(false);
+                setEditingProject(null);
                 setName("");
               }}
             >
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={!name.trim() || submitting}>
-              Create
+              {editingProject ? "Save" : "Create"}
             </Button>
           </div>
         </form>
@@ -222,18 +253,35 @@ export function ProjectSidebar({
                       </div>
                     )}
                     {isExpanded && (
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        aria-label={`Delete ${p.name}`}
-                        className="opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPendingDelete(p);
-                        }}
-                      >
-                        <Trash2 className="text-muted-foreground" />
-                      </Button>
+                      <div>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label={`Edit ${p.name}`}
+                          className="cursor-pointer opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingProject(p);
+                            setName(p.name);
+                            setLang((p.source_lang as SourceLang) || "zh");
+                            setAdding(true);
+                          }}
+                        >
+                          <Pencil className="text-muted-foreground" />
+                        </Button>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label={`Delete ${p.name}`}
+                          className="cursor-pointer opacity-0 transition-opacity duration-150 group-hover/item:opacity-100 focus-visible:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDelete(p);
+                          }}
+                        >
+                          <Trash2 className="text-muted-foreground" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </li>

@@ -150,7 +150,7 @@ def test_translate_streams_and_autosaves(client):
     with client.stream(
         "POST",
         f"/api/projects/{pid}/translate",
-        json={"raw_text": "我是林", "source_lang": "zh"},
+        json={"source_text": "我是林", "source_lang": "zh"},
     ) as resp:
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers["content-type"]
@@ -170,20 +170,20 @@ def test_translate_streams_and_autosaves(client):
     # Auto-saved on completion.
     saved = client.get(f"/api/projects/{pid}/translations").json()
     assert len(saved) == 1
-    assert "我是Lin" in saved[0]["output_text"]
+    assert "我是Lin" in saved[0]["translated_text"]
 
 
 def test_translate_unknown_project_404(client):
     r = client.post(
         "/api/projects/nope/translate",
-        json={"raw_text": "x", "source_lang": "zh"},
+        json={"source_text": "x", "source_lang": "zh"},
     )
     assert r.status_code == 404
 
 
 def _run_translate(client, pid, raw, extra=None):
     """Stream a translation and return (reassembled events, done_event)."""
-    body = {"raw_text": raw, "source_lang": "zh", **(extra or {})}
+    body = {"source_text": raw, "source_lang": "zh", **(extra or {})}
     with client.stream("POST", f"/api/projects/{pid}/translate", json=body) as resp:
         assert resp.status_code == 200
         text = "".join(resp.iter_text())
@@ -324,7 +324,7 @@ def test_delete_translation(client):
     with client.stream(
         "POST",
         f"/api/projects/{pid}/translate",
-        json={"raw_text": "hello", "source_lang": "zh"},
+        json={"source_text": "hello", "source_lang": "zh"},
     ) as resp:
         body = "".join(resp.iter_text())
     events = [
@@ -538,7 +538,7 @@ def test_experimental_endpoints_gated_off_by_default(tmp_path):
         with client.stream(
             "POST",
             f"/api/projects/{pid}/translate",
-            json={"raw_text": "测试", "source_lang": "zh"},
+            json={"source_text": "测试", "source_lang": "zh"},
         ) as s:
             tid = None
             for line in s.iter_lines():
@@ -572,7 +572,7 @@ def test_pronoun_drift_endpoint_when_enabled(tmp_path):
         with c.stream(
             "POST",
             f"/api/projects/{pid}/translate",
-            json={"raw_text": "x", "source_lang": "zh"},
+            json={"source_text": "x", "source_lang": "zh"},
         ) as s:
             tid = None
             for line in s.iter_lines():
@@ -588,7 +588,7 @@ def test_pronoun_drift_endpoint_when_enabled(tmp_path):
 def test_source_terms_endpoint_when_enabled(tmp_path):
     """With NB_SOURCE_TERMS on, the endpoint returns a list (empty if model absent).
 
-    Source-term NER runs over a saved translation's SOURCE chapter (``raw_text``), not a
+    Source-term NER runs over a saved translation's SOURCE chapter (``source_text``), not a
     reference (references are English). So translate a Chinese raw chapter first, then query.
     """
     settings = Settings(
@@ -601,7 +601,7 @@ def test_source_terms_endpoint_when_enabled(tmp_path):
         with c.stream(
             "POST",
             f"/api/projects/{pid}/translate",
-            json={"raw_text": "林风走向北京。北京很大。", "source_lang": "zh"},
+            json={"source_text": "林风走向北京。北京很大。", "source_lang": "zh"},
         ) as s:
             tid = None
             for line in s.iter_lines():
@@ -633,7 +633,7 @@ def test_extract_glossary_endpoint(tmp_path):
         with c.stream(
             "POST",
             f"/api/projects/{pid}/translate",
-            json={"raw_text": "林风走向北京。北京很大。", "source_lang": "zh"},
+            json={"source_text": "林风走向北京。北京很大。", "source_lang": "zh"},
         ) as s:
             tid = None
             for line in s.iter_lines():
@@ -646,7 +646,7 @@ def test_extract_glossary_endpoint(tmp_path):
         assert r.status_code == 200
         pairs = r.json()
         assert isinstance(pairs, list)
-        # The mock fabricates pairs from candidate source terms found in raw_text.
+        # The mock fabricates pairs from candidate source terms found in source_text.
         # Shape: each pair has at least source_term and surface_form.
         for p in pairs:
             assert "source_term" in p
@@ -688,7 +688,7 @@ def test_extract_style_stateless_body(client):
 
 
 def test_extract_glossary_stateless_body(tmp_path):
-    """extract-glossary accepts raw_text + output_text in the body (no DB read, no tid).
+    """extract-glossary accepts source_text + translated_text in the body (no DB read, no tid).
 
     Backward-compatible stateless path (task 23.4c): both texts supplied → the server pairs
     them directly, so the {tid} in the path is irrelevant and need not exist in storage.
@@ -698,8 +698,8 @@ def test_extract_glossary_stateless_body(tmp_path):
         r = c.post(
             "/api/translations/not-a-real-tid/extract-glossary",
             json={
-                "raw_text": "林风走向北京。北京很大。",
-                "output_text": "Lin Feng walked toward Beijing. Beijing is large.",
+                "source_text": "林风走向北京。北京很大。",
+                "translated_text": "Lin Feng walked toward Beijing. Beijing is large.",
                 "source_lang": "zh",
             },
         )

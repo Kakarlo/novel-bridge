@@ -136,7 +136,8 @@ class SQLiteStorage(StorageService):
         self,
         pid: str,
         title: str,
-        content: str,
+        translated_content: str,
+        source_content: str | None = None,
         summary: str | None = None,
         candidate_terms: list[str] | None = None,
         detected_names: list[str] | None = None,
@@ -146,7 +147,8 @@ class SQLiteStorage(StorageService):
             id=new_id(),
             project_id=pid,
             title=title,
-            content=content,
+            translated_content=translated_content,
+            source_content=source_content,
             created_at=utcnow_iso(),
             chapter_number=chapter_number,
             summary=summary,
@@ -156,14 +158,15 @@ class SQLiteStorage(StorageService):
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO reference_chapters"
-                " (id, project_id, title, content, created_at, chapter_number, summary,"
+                " (id, project_id, title, translated_content, source_content, created_at, chapter_number, summary,"
                 "  candidate_terms, detected_names)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     ref.id,
                     ref.project_id,
                     ref.title,
-                    ref.content,
+                    ref.translated_content,
+                    ref.source_content,
                     ref.created_at,
                     ref.chapter_number,
                     ref.summary,
@@ -418,30 +421,30 @@ class SQLiteStorage(StorageService):
         self,
         pid: str,
         source_lang: SourceLang,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         model_used: str,
     ) -> Translation:
         tr = Translation(
             id=new_id(),
             project_id=pid,
             source_lang=source_lang,
-            raw_text=raw_text,
-            output_text=output_text,
+            source_text=source_text,
+            translated_text=translated_text,
             model_used=model_used,
             created_at=utcnow_iso(),
         )
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO translations"
-                " (id, project_id, source_lang, raw_text, output_text, model_used, created_at)"
+                " (id, project_id, source_lang, source_text, translated_text, model_used, created_at)"
                 " VALUES (?,?,?,?,?,?,?)",
                 (
                     tr.id,
                     tr.project_id,
                     tr.source_lang,
-                    tr.raw_text,
-                    tr.output_text,
+                    tr.source_text,
+                    tr.translated_text,
                     tr.model_used,
                     tr.created_at,
                 ),

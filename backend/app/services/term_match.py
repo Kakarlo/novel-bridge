@@ -67,15 +67,15 @@ def _snippets(text: str, pattern: re.Pattern[str]) -> tuple[int, list[str]]:
 
 
 def find_occurrences(
-    output_text: str, terms: Iterable[GlossaryEntry]
+    translated_text: str, terms: Iterable[GlossaryEntry]
 ) -> list[TermMatch]:
-    """Find whole-word, case-insensitive occurrences of each term in ``output_text``.
+    """Find whole-word, case-insensitive occurrences of each term in ``translated_text``.
 
     Returns one ``TermMatch`` per term that appears at least once, in descending order of
     occurrence count (ties keep input order), so the review UI can lead with the most
     prominent names. Terms that never appear are omitted. Pure and offline.
     """
-    if not output_text:
+    if not translated_text:
         return []
 
     matches: list[TermMatch] = []
@@ -91,7 +91,7 @@ def find_occurrences(
         pattern = _build_pattern(term.surface_form)
         if pattern is None:
             continue
-        count, snippets = _snippets(output_text, pattern)
+        count, snippets = _snippets(translated_text, pattern)
         if count == 0:
             continue
         matches.append(

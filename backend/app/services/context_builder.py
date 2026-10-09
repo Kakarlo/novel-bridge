@@ -85,7 +85,7 @@ def _order_newest_first(refs: list[ReferenceChapter]) -> list[ReferenceChapter]:
 def build(
     glossary: list[GlossaryEntry],
     references: list[ReferenceChapter],
-    raw_text: str,
+    source_text: str,
     budget_tokens: int,
     *,
     system_prompt_tokens: int = 260,
@@ -97,7 +97,7 @@ def build(
         system_prompt_tokens
         + reply_headroom_tokens
         + _glossary_tokens(glossary)
-        + estimate_tokens(raw_text)
+        + estimate_tokens(source_text)
     )
     remaining = budget_tokens - reserved
 

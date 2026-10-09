@@ -229,7 +229,7 @@ def redetect_reference_names(
     ref = store.get_reference(ref_id)
     if not ref:
         raise HTTPException(404, "Reference not found")
-    detected_names = extract_proper_nouns(ref.content)
+    detected_names = extract_proper_nouns(ref.translated_content)
     # Don't resurface names the user has already resolved into the glossary (promoted or
     # rejected) — those have left the suggestion pool on purpose.
     in_glossary = {e.surface_form.casefold() for e in store.list_glossary(ref.project_id)}
@@ -364,7 +364,7 @@ def get_translation_matches(tid: str, store: StorageService = Depends(get_storag
     if not tr:
         raise HTTPException(404, "Translation not found")
     glossary = store.list_glossary(tr.project_id)
-    return find_occurrences(tr.output_text, glossary)
+    return find_occurrences(tr.translated_text, glossary)
 
 
 @router.get("/translations/{tid}/source-terms", response_model=list[str])
@@ -374,7 +374,7 @@ def get_translation_source_terms(
     settings: Settings = Depends(get_settings),
 ):
     """EXPERIMENTAL (gated by NB_SOURCE_TERMS): deterministic zh/ja proper-noun detection
-    over a saved translation's SOURCE chapter (``raw_text``).
+    over a saved translation's SOURCE chapter (``source_text``).
 
     A reference is English, so source-term NER belongs here, where real source text exists —
     not on references. 404 if the feature is off or the translation is missing. Returns [] if
@@ -384,7 +384,7 @@ def get_translation_source_terms(
     tr = store.get_translation(tid)
     if not tr:
         raise HTTPException(404, "Translation not found")
-    return extract_source_terms(tr.raw_text, tr.source_lang)
+    return extract_source_terms(tr.source_text, tr.source_lang)
 
 
 @router.post(
@@ -416,24 +416,24 @@ async def extract_translation_glossary(
     pairs. ``[]`` on any engine error (degraded, never crashes).
 
     Source of the text (task 23.4c, backward-compatible):
-    - ``body.raw_text`` AND ``body.output_text`` both present → use them verbatim, NO storage
+    - ``body.source_text`` AND ``body.translated_text`` both present → use them verbatim, NO storage
       read (the stateless path for the IndexedDB backend, which owns the saved translation).
       ``body.source_lang`` names the source language (defaults to ``zh``).
     - otherwise → load the saved translation from storage by ``tid`` (the API backend's
       behavior, unchanged); 404 when it's missing.
     """
     # Stateless path: both texts supplied in the body → skip the DB entirely.
-    stateless = bool(body and body.raw_text and body.output_text)
+    stateless = bool(body and body.source_text and body.translated_text)
     if stateless:
-        raw_text = body.raw_text  # type: ignore[union-attr]
-        output_text = body.output_text  # type: ignore[union-attr]
+        source_text = body.source_text  # type: ignore[union-attr]
+        translated_text = body.translated_text  # type: ignore[union-attr]
         source_lang = (body.source_lang if body else None) or "zh"
     else:
         tr = store.get_translation(tid)
         if not tr:
             raise HTTPException(404, "Translation not found")
-        raw_text = tr.raw_text
-        output_text = tr.output_text
+        source_text = tr.source_text
+        translated_text = tr.translated_text
         source_lang = tr.source_lang
 
     # Per-request engine resolution (BYO-key). selection.{provider, model} from the body
@@ -454,12 +454,12 @@ async def extract_translation_glossary(
     # Build candidate hints from deterministic pre-filters.
     candidates: list[str] = []
     if settings.nb_source_terms:
-        candidates.extend(extract_source_terms(raw_text, source_lang))
-    candidates.extend(extract_proper_nouns(output_text))
+        candidates.extend(extract_source_terms(source_text, source_lang))
+    candidates.extend(extract_proper_nouns(translated_text))
 
     pairs = await engine.extract_glossary(
-        raw_text=raw_text,
-        output_text=output_text,
+        source_text=source_text,
+        translated_text=translated_text,
         source_lang=source_lang,
         candidates=candidates or None,
         model=model,
@@ -494,6 +494,71 @@ async def extract_translation_glossary(
     ]
 
 
+@router.post(
+    "/references/{ref_id}/extract-glossary",
+    response_model=list[GlossaryPairSuggestion],
+)
+async def extract_reference_glossary(
+    ref_id: str,
+    body: GlossaryExtractBody | None = None,
+    store: StorageService = Depends(get_storage),
+    fallback_engine: TranslationEngine = Depends(get_translation_engine),
+    settings: Settings = Depends(get_settings),
+    api_key: str | None = Depends(get_request_api_key),
+):
+
+    # Stateless path: both texts supplied in the body → skip the DB entirely.
+    stateless = bool(body and body.source_text and body.translated_text)
+    if stateless:
+        source_text = body.source_text  # type: ignore[union-attr]
+        translated_text = body.translated_text  # type: ignore[union-attr]
+        source_lang = (body.source_lang if body else None) or "zh"
+    else:
+        rf = store.get_reference(ref_id)
+        if not rf:
+            raise HTTPException(404, "Translation not found")
+        source_text = rf.source_text
+        translated_text = rf.translated_text
+        source_lang = rf.source_lang
+
+    sel = body.selection if body else None
+    provider = sel.provider if sel else None
+    model = sel.model if sel else None
+    engine = resolve_request_engine(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        settings=settings,
+        fallback=fallback_engine,
+        ollama_base_url=sel.ollama_base_url if sel else None,
+    )
+
+    # Build candidate hints from deterministic pre-filters.
+    candidates: list[str] = []
+    if settings.nb_source_terms:
+        candidates.extend(extract_source_terms(source_text, source_lang))
+    candidates.extend(extract_proper_nouns(translated_text))
+
+    pairs = await engine.extract_glossary(
+        source_text=source_text,
+        translated_text=translated_text,
+        source_lang=source_lang,
+        candidates=candidates or None,
+        model=model,
+    )
+
+    return [
+        GlossaryPairSuggestion(
+            source_term=p.source_term,
+            surface_form=p.surface_form,
+            category=p.category,
+            gender=p.gender,
+            note=p.note,
+        )
+        for p in pairs
+    ]
+
+
 @router.get("/translations/{tid}/pronoun-drift", response_model=list[PronounFlag])
 def get_translation_pronoun_drift(
     tid: str,
@@ -509,7 +574,7 @@ def get_translation_pronoun_drift(
     if not tr:
         raise HTTPException(404, "Translation not found")
     glossary = store.list_glossary(tr.project_id)
-    return find_pronoun_drift(tr.output_text, glossary)
+    return find_pronoun_drift(tr.translated_text, glossary)
 
 
 @router.delete("/translations/{tid}", status_code=204)

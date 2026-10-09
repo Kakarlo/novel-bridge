@@ -59,14 +59,14 @@ def _name_pattern(surface_form: str) -> re.Pattern[str] | None:
 
 
 def find_pronoun_drift(
-    output_text: str, terms: Iterable[GlossaryEntry]
+    translated_text: str, terms: Iterable[GlossaryEntry]
 ) -> list[PronounFlag]:
-    """Flag likely gender/pronoun mismatches for gendered characters in ``output_text``.
+    """Flag likely gender/pronoun mismatches for gendered characters in ``translated_text``.
 
     Returns one flag per suspicious occurrence (capped per name). Pure, offline, detection
     only. Characters without a known male/female gender are skipped.
     """
-    if not output_text:
+    if not translated_text:
         return []
 
     flags: list[PronounFlag] = []
@@ -82,18 +82,18 @@ def find_pronoun_drift(
             continue
 
         found = 0
-        for m in pattern.finditer(output_text):
+        for m in pattern.finditer(translated_text):
             if found >= _MAX_PER_NAME:
                 break
-            window = output_text[m.end() : m.end() + _WINDOW]
+            window = translated_text[m.end() : m.end() + _WINDOW]
             # Stop the window at the next capitalized name-ish token so we don't attribute
             # a pronoun that clearly belongs to a later subject (very rough guard).
             pron = _first_conflicting_pronoun(window, conflicting)
             if pron is None:
                 continue
             start = max(0, m.start() - 20)
-            end = min(len(output_text), m.end() + _WINDOW)
-            snippet = " ".join(output_text[start:end].split())
+            end = min(len(translated_text), m.end() + _WINDOW)
+            snippet = " ".join(translated_text[start:end].split())
             flags.append(
                 PronounFlag(
                     surface_form=term.surface_form,

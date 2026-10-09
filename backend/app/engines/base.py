@@ -11,7 +11,7 @@ from app.models import GlossaryEntry, SourceLang
 
 @dataclass
 class TranslationRequest:
-    raw_text: str
+    source_text: str
     source_lang: SourceLang
     glossary: list[GlossaryEntry] = field(default_factory=list)
     reference_context: str = ""
@@ -98,16 +98,16 @@ class TranslationEngine(ABC):
     @abstractmethod
     async def extract_glossary(
         self,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         source_lang: SourceLang,
         candidates: list[str] | None = None,
         model: str | None = None,
     ) -> list[GlossaryPair]:
         """Pair source terms to the English spellings used in a translation.
 
-        Replaces the deterministic aligner. Given a source chapter (``raw_text``) and its
-        English ``output_text`` — same story, translator's real spellings — return paired
+        Replaces the deterministic aligner. Given a source chapter (``source_text``) and its
+        English ``translated_text`` — same story, translator's real spellings — return paired
         ``GlossaryPair`` candidates for the user to approve.
 
         ``candidates`` is an optional deterministic pre-filter (source-language proper nouns

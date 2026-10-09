@@ -137,7 +137,7 @@ def test_translate_no_selection_uses_fallback(client):
     pid = _create_project(client)
     r = client.post(
         f"/api/projects/{pid}/translate",
-        json={"raw_text": "你好", "source_lang": "zh"},
+        json={"source_text": "你好", "source_lang": "zh"},
     )
     assert r.status_code == 200
     events = _collect_sse(r)
@@ -149,7 +149,7 @@ def test_translate_unknown_provider_400(client):
     r = client.post(
         f"/api/projects/{pid}/translate",
         json={
-            "raw_text": "你好",
+            "source_text": "你好",
             "source_lang": "zh",
             "selection": {"provider": "bogus"},
         },
@@ -163,7 +163,7 @@ def test_translate_cloud_provider_without_key_401(client):
     r = client.post(
         f"/api/projects/{pid}/translate",
         json={
-            "raw_text": "你好",
+            "source_text": "你好",
             "source_lang": "zh",
             "selection": {"provider": "openrouter"},
         },
@@ -179,7 +179,7 @@ def test_translate_mock_provider_no_key_ok(client):
     r = client.post(
         f"/api/projects/{pid}/translate",
         json={
-            "raw_text": "你好",
+            "source_text": "你好",
             "source_lang": "zh",
             "selection": {"provider": "mock"},
         },

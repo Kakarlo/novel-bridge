@@ -44,7 +44,8 @@ class ReferenceChapter(BaseModel):
     id: str
     project_id: str
     title: str
-    content: str
+    translated_content: str
+    source_content: str | None = None
     created_at: str
     # Parsed from the title at upload (services/chapter_number.py). None when the title has
     # no recognizable chapter number; ordering falls back to created_at and the UI can ask
@@ -92,8 +93,8 @@ class Translation(BaseModel):
     id: str
     project_id: str
     source_lang: SourceLang
-    raw_text: str
-    output_text: str
+    source_text: str
+    translated_text: str
     model_used: str
     created_at: str
 
@@ -310,7 +311,7 @@ class ModelSelection(BaseModel):
 
 
 class GlossaryExtractBody(BaseModel):
-    """Optional body for POST /translations/{tid}/extract-glossary.
+    """Optional body for POST /translations/{tid}/extract-glossary and /references/{}/extract-glossary.
 
     Carries the per-request engine override ({provider, model}) as ``selection`` — the SAME
     shape as the translate and extract-style bodies, so every LLM endpoint accepts the engine
@@ -320,7 +321,7 @@ class GlossaryExtractBody(BaseModel):
 
     Stateless (local-first) fields — task 23.4c, backward-compatible: the browser (IndexedDB
     backend) owns the saved translation, so it ships the source + output text in the body
-    instead of the server loading them by ``tid``. Both ``raw_text`` and ``output_text`` are
+    instead of the server loading them by ``tid``. Both ``source_text`` and ``translated_text`` are
     optional:
       - BOTH provided → the server uses them verbatim and does NO storage read (the stateless
         path; ``source_lang`` must then be supplied so the deterministic pre-filters know the
@@ -330,14 +331,14 @@ class GlossaryExtractBody(BaseModel):
     """
 
     selection: ModelSelection | None = None
-    raw_text: str | None = None
-    output_text: str | None = None
-    # Source language of ``raw_text`` on the stateless path (the server has no DB row to read
+    source_text: str | None = None
+    translated_text: str | None = None
+    # Source language of ``source_text`` on the stateless path (the server has no DB row to read
     # it from). Ignored when loading by ``tid``. Defaults to ``zh`` when the stateless body
     # omits it.
     source_lang: SourceLang | None = None
 
-    @field_validator("raw_text", "output_text")
+    @field_validator("source_text", "translated_text")
     @classmethod
     def text_blank_to_none(cls, v: str | None) -> str | None:
         if v is None:
@@ -373,7 +374,7 @@ class DetectNamesResponse(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    raw_text: str = Field(min_length=1)
+    source_text: str = Field(min_length=1)
     source_lang: SourceLang
     # Opt-in in-context term review (task 14). When true, the terminal `done` SSE event
     # carries `matches` (glossary terms found in the output) for the approve/reject loop.
@@ -403,11 +404,11 @@ class TranslateRequest(BaseModel):
     style_profile: str | None = None
     save: bool = True
 
-    @field_validator("raw_text")
+    @field_validator("source_text")
     @classmethod
     def raw_not_blank(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("Raw text must not be empty.")
+            raise ValueError("Source text must not be empty.")
         return v
 
 

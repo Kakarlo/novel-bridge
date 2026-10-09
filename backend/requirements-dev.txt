@@ -7,3 +7,5 @@ spacy==3.8.16
 # NER model for proper-noun detection (noun_extract.py). Not on PyPI as a normal dep;
 # install with: python -m spacy download en_core_web_sm
 # en_core_web_sm==3.8.0
+pytest==8.3.4
+pytest-asyncio==0.25.1

@@ -204,14 +204,14 @@ class OpenRouterEngine(TranslationEngine):
 
     async def extract_glossary(
         self,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         source_lang: SourceLang,
         candidates: list[str] | None = None,
         model: str | None = None,
     ) -> list[GlossaryPair]:
         raw = await self._chat(
-            build_glossary_pairing_messages(raw_text, output_text, source_lang, candidates),
+            build_glossary_pairing_messages(source_text, translated_text, source_lang, candidates),
             json_mode=True,
         )
         return _parse_glossary_pairs(raw) if raw else []

@@ -183,14 +183,14 @@ def build_translation_messages(
         "Translate ONLY the text between the delimiters below. "
         "The output should contain approximately the same amount of content as the raw chapter. "
         "Do not continue the story. Do not add new text. Output only the English translation.\n"
-        f"{_RAW_OPEN}\n{req.raw_text}\n{_RAW_CLOSE}"
+        f"{_RAW_OPEN}\n{req.source_text}\n{_RAW_CLOSE}"
     )
 
     messages = [
         {"role": "system", "content": profile.translation_system_prompt},
         {"role": "user", "content": "\n\n".join(parts)},
     ]
-    dump_messages(messages, "STYLE EXTRACTION")
+    # dump_messages(messages, "STYLE EXTRACTION")
     return messages
 
 
@@ -231,8 +231,8 @@ def build_extraction_messages(
 
 
 def build_glossary_pairing_messages(
-    raw_text: str,
-    output_text: str,
+    source_text: str,
+    translated_text: str,
     source_lang: SourceLang,
     candidates: list[str] | None = None,
     profile_name: str = "low",
@@ -254,9 +254,9 @@ def build_glossary_pairing_messages(
     #         "terms — prioritize pairing them, but add any other clearly recurring entity you "
     #         "find. These are hints, not a required list.)\n" + ", ".join(candidates)
     #     )
-    parts.append(f"## Source chapter\n{_RAW_OPEN}\n{raw_text}\n{_RAW_CLOSE}")
+    parts.append(f"## Source chapter\n{_RAW_OPEN}\n{source_text}\n{_RAW_CLOSE}")
     parts.append(
-        f"## English translation\n{_TRANS_OPEN}\n{output_text}\n{_TRANS_CLOSE}"
+        f"## English translation\n{_TRANS_OPEN}\n{translated_text}\n{_TRANS_CLOSE}"
     )
     messages = [
         {"role": "system", "content": profile.glossary_pairing_system_prompt},

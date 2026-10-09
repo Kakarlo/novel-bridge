@@ -240,8 +240,8 @@ class OllamaEngine(TranslationEngine):
 
     async def extract_glossary(
         self,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         source_lang: SourceLang,
         candidates: list[str] | None = None,
         model: str | None = None,
@@ -259,7 +259,7 @@ class OllamaEngine(TranslationEngine):
         payload = {
             "model": model or self._model,
             "messages": build_glossary_pairing_messages(
-                raw_text, output_text, source_lang, candidates
+                source_text, translated_text, source_lang, candidates
             ),
             "stream": False,
             "think": self._think,

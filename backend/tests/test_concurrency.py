@@ -56,7 +56,7 @@ class _SlowConcurrencyEngine(TranslationEngine):
     async def extract_reference(self, content, source_lang):
         return ReferenceExtraction(summary="", candidate_terms=[])
 
-    async def extract_glossary(self, raw_text, output_text, source_lang, candidates=None, model=None):
+    async def extract_glossary(self, source_text, translated_text, source_lang, candidates=None, model=None):
         return []
 
     async def extract_style(self, content, source_lang):
@@ -107,7 +107,7 @@ async def _run_translate(client: httpx.AsyncClient, pid: str) -> list[dict]:
     async with client.stream(
         "POST",
         f"/api/projects/{pid}/translate",
-        json={"raw_text": "x", "source_lang": "zh"},
+        json={"source_text": "x", "source_lang": "zh"},
     ) as resp:
         async for line in resp.aiter_lines():
             if line.startswith("data: "):

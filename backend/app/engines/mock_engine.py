@@ -41,7 +41,7 @@ class MockEngine(TranslationEngine):
             + (f" | glossary-applied: {', '.join(applied)}" if applied else "")
             + "\n"
         )
-        body = self._apply_glossary(req.raw_text, req)
+        body = self._apply_glossary(req.source_text, req)
         full = header + body
 
         for i in range(0, len(full), self._chunk_size):
@@ -75,8 +75,8 @@ class MockEngine(TranslationEngine):
 
     async def extract_glossary(
         self,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         source_lang: SourceLang,
         candidates: list[str] | None = None,
         model: str | None = None,
@@ -85,12 +85,12 @@ class MockEngine(TranslationEngine):
 
         A real engine binds source terms to the translation's actual spellings. With no LLM
         the mock can't translate, so it fabricates a stable, verifiable mapping: each source
-        candidate that actually occurs in ``raw_text`` is paired with the first English word
-        found in ``output_text``, cycling through the English words. The point is to exercise
+        candidate that actually occurs in ``source_text`` is paired with the first English word
+        found in ``translated_text``, cycling through the English words. The point is to exercise
         the full pairing path (route → storage upsert → candidate rows), not to be correct.
         """
-        src_terms = [c for c in (candidates or []) if c and c in raw_text]
-        english_words = re.findall(r"\b[A-Z][a-zA-Z]+\b", output_text)
+        src_terms = [c for c in (candidates or []) if c and c in source_text]
+        english_words = re.findall(r"\b[A-Z][a-zA-Z]+\b", translated_text)
         pairs: list[GlossaryPair] = []
         seen: set[str] = set()
         for i, term in enumerate(src_terms):

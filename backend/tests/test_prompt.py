@@ -13,7 +13,7 @@ from app.services.prompts import builders
 
 
 def _req(**kw) -> TranslationRequest:
-    base = dict(raw_text="RAWBODY", source_lang="zh")
+    base = dict(source_text="RAWBODY", source_lang="zh")
     base.update(kw)
     return TranslationRequest(**base)
 

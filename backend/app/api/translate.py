@@ -106,7 +106,7 @@ def translate(
     # the client drove the glossary. Only the API-storage path still consults references.
     references = [] if stateless else store.list_references(pid)
     built = cb.build(
-        glossary, references, body.raw_text, settings.nb_context_budget_tokens
+        glossary, references, body.source_text, settings.nb_context_budget_tokens
     )
 
     # Debug: estimated context occupancy, so OLLAMA_NUM_CTX can be sized from real data.
@@ -115,7 +115,7 @@ def translate(
     # risks overflow is the PEAK = assembled input + projected output, not the input alone.
     # Projected output ~= source tokens * _OUTPUT_TOKEN_RATIO (zh/ja -> en tends to expand in
     # token count). estimate_tokens is the same char/3 heuristic the budgeter uses.
-    raw_tok = cb.estimate_tokens(body.raw_text)
+    raw_tok = cb.estimate_tokens(body.source_text)
     ref_tok = cb.estimate_tokens(built.reference_context)
     assembled = raw_tok + ref_tok
     projected_output = int(raw_tok * _OUTPUT_TOKEN_RATIO)
@@ -130,12 +130,12 @@ def translate(
         peak,
         settings.nb_context_budget_tokens,
         settings.ollama_num_ctx,
-        len(body.raw_text),
+        len(body.source_text),
         built.truncated,
     )
 
     req = TranslationRequest(
-        raw_text=body.raw_text,
+        source_text=body.source_text,
         source_lang=body.source_lang,
         glossary=glossary,
         # reference_context=built.reference_context,
@@ -195,7 +195,7 @@ def translate(
                 yield _sse({"error": f"Translation failed: {exc}"})
                 return
 
-            output_text = "".join(collected).strip()
+            translated_text = "".join(collected).strip()
             # Auto-save on completion (Requirement 4.6 / decision Q13), UNLESS the client
             # drives persistence itself (local-first idb backend sends save=false and writes
             # the result to IndexedDB from the `done` event — task 23.4a/b). When save=false
@@ -203,7 +203,7 @@ def translate(
             translation_id = None
             if body.save:
                 saved = store.save_translation(
-                    pid, body.source_lang, body.raw_text, output_text, model_used
+                    pid, body.source_lang, body.source_text, translated_text, model_used
                 )
                 translation_id = saved.id
             done_event: dict = {"done": True, "translation_id": translation_id}
@@ -211,7 +211,7 @@ def translate(
             # fold them into the terminal event so the client can offer approve/reject.
             # Detection only — the translation itself is never modified.
             if body.review_terms:
-                matches = find_occurrences(output_text, glossary)
+                matches = find_occurrences(translated_text, glossary)
                 done_event["matches"] = [m.model_dump() for m in matches]
             yield _sse(done_event)
         finally:

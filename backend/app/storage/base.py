@@ -120,8 +120,8 @@ class StorageService(ABC):
         self,
         pid: str,
         source_lang: SourceLang,
-        raw_text: str,
-        output_text: str,
+        source_text: str,
+        translated_text: str,
         model_used: str,
     ) -> Translation: ...
 

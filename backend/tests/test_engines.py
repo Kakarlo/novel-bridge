@@ -33,7 +33,7 @@ async def _collect(engine, req):
 
 async def test_mock_engine_deterministic_and_substitutes():
     engine = MockEngine()
-    req = TranslationRequest(raw_text="我是林", source_lang="zh", glossary=_glossary())
+    req = TranslationRequest(source_text="我是林", source_lang="zh", glossary=_glossary())
     out1 = "".join(c.content for c in await _collect(engine, req))
     out2 = "".join(c.content for c in await _collect(engine, req))
     assert out1 == out2  # deterministic
@@ -45,7 +45,7 @@ async def test_mock_engine_deterministic_and_substitutes():
 
 async def test_mock_engine_no_glossary():
     engine = MockEngine()
-    req = TranslationRequest(raw_text="hello", source_lang="ja")
+    req = TranslationRequest(source_text="hello", source_lang="ja")
     out = "".join(c.content for c in await _collect(engine, req))
     assert "[MOCK]" in out
     assert "hello" in out
@@ -84,7 +84,7 @@ async def test_ollama_engine_parses_ndjson_and_strips_think():
 
     oe.httpx.AsyncClient = client_factory  # type: ignore[assignment]
     try:
-        req = TranslationRequest(raw_text="你好", source_lang="zh")
+        req = TranslationRequest(source_text="你好", source_lang="zh")
         chunks = await _collect(engine, req)
     finally:
         oe.httpx.AsyncClient = orig  # type: ignore[assignment]

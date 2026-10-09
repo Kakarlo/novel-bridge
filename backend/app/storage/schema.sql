@@ -13,22 +13,23 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS reference_chapters (
-  id              TEXT PRIMARY KEY,
-  project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  title           TEXT NOT NULL,
-  content         TEXT NOT NULL,
-  created_at      TEXT NOT NULL,
+  id                  TEXT PRIMARY KEY,
+  project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title               TEXT NOT NULL,
+  translated_content  TEXT NOT NULL,
+  source_content      TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
   -- Parsed from the title at upload (services/chapter_number.py); NULL when the title has
   -- no recognizable number (volume formats, prologues) — ordering then falls back to
   -- created_at and the UI can prompt for a manual value.
-  chapter_number  INTEGER,
+  chapter_number      INTEGER,
   -- Derived at upload time (task 13): a style/plot summary and a JSON array of
   -- candidate glossary terms. NULL until extraction has run.
-  summary         TEXT,
-  candidate_terms TEXT,
+  summary             TEXT,
+  candidate_terms     TEXT,
   -- Rule-based proper-noun detections (field-fix #2), JSON array, kept separate from the
   -- AI candidate_terms. NULL until extraction has run.
-  detected_names  TEXT
+  detected_names      TEXT
 );
 
 -- English-first glossary (task 14). References are English, so entries are keyed on the
@@ -54,8 +55,8 @@ CREATE TABLE IF NOT EXISTS translations (
   id          TEXT PRIMARY KEY,
   project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   source_lang TEXT NOT NULL,
-  raw_text    TEXT NOT NULL,
-  output_text TEXT NOT NULL,
+  source_text    TEXT NOT NULL,
+  translated_text TEXT NOT NULL,
   model_used  TEXT NOT NULL,
   created_at  TEXT NOT NULL
 );

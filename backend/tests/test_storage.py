@@ -89,9 +89,9 @@ def test_glossary_update_and_delete(store):
 def test_translation_save_and_list(store):
     p = store.create_project("S", "zh")
     t = store.save_translation(p.id, "zh", "你好", "Hello", "qwen3.5:0.8b")
-    assert t.output_text == "Hello"
+    assert t.translated_text == "Hello"
     assert len(store.list_translations(p.id)) == 1
-    assert store.get_translation(t.id).raw_text == "你好"
+    assert store.get_translation(t.id).source_text == "你好"
     # cascade on project delete
     store.delete_project(p.id)
     assert store.list_translations(p.id) == []

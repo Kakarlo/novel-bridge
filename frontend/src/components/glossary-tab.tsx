@@ -379,7 +379,7 @@ function GlossaryEditor({ mode, entry, onCancel, onSubmitCreate, onSubmitUpdate 
   // English-first: only the English name is required. Source term is optional.
   const invalid = useMemo(() => !surfaceForm.trim(), [surfaceForm]);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setTouched(true);
     if (invalid) return;

@@ -8,6 +8,7 @@ import { api } from "@/api/client";
 import type {
   GlossaryCreate,
   GlossaryEntry,
+  GlossaryExtractionRun,
   GlossaryStatus,
   GlossaryUpdate,
   Project,
@@ -100,6 +101,20 @@ export class ApiStorageService implements StorageService {
   // The server recomputes matches against its current glossary for the saved translation.
   getTranslationMatches(tid: string): Promise<TermMatch[]> {
     return api.getTranslationMatches(tid);
+  }
+
+    // --- glossary extraction runs ---
+  saveGlossaryExtractionRun(_run: GlossaryExtractionRun): Promise<void> {
+    return Promise.reject(
+      new Error("Glossary extraction persistence is only available with local (browser) storage.")
+    );
+  }
+
+  getGlossaryExtractionRun(
+    _source: "translation" | "reference",
+    _sourceId: string
+  ): Promise<GlossaryExtractionRun | null> {
+    return Promise.resolve(null);
   }
 
   // --- portability ---

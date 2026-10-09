@@ -21,6 +21,7 @@ import { api } from "@/api/client";
 import type {
   GlossaryCreate,
   GlossaryEntry,
+  GlossaryExtractionRun,
   GlossaryStatus,
   GlossaryUpdate,
   Project,
@@ -64,6 +65,7 @@ class NbDexie extends Dexie {
   references!: Table<ReferenceChapter, string>;
   glossary!: Table<GlossaryEntry, string>;
   translations!: Table<Translation, string>;
+  glossary_extractions!: Table<GlossaryExtractionRun, string>;
 
   constructor() {
     super("novelbridge");
@@ -73,6 +75,7 @@ class NbDexie extends Dexie {
       references: "id, project_id, created_at",
       glossary: "id, project_id, surface_form",
       translations: "id, project_id, created_at",
+      glossary_extractions: "id, project_id, source, source_id, [source+source_id], created_at",
     });
   }
 }
@@ -148,6 +151,7 @@ export class IndexedDbStorage implements StorageService {
         await this.db.references.where("project_id").equals(id).delete();
         await this.db.glossary.where("project_id").equals(id).delete();
         await this.db.translations.where("project_id").equals(id).delete();
+        await this.db.glossary_extractions.where("project_id").equals(id).delete();
       }
     );
   }
@@ -173,7 +177,7 @@ export class IndexedDbStorage implements StorageService {
     // unreachable the reference still saves with detected_names=[] (and Redetect can retry).
     let detectedNames: string[] = [];
     try {
-      detectedNames = (await api.detectNames(input.content)).detected_names;
+      detectedNames = (await api.detectNames(input.translated_content)).detected_names;
     } catch {
       /* detection unavailable — save the reference anyway, names can be redetected later */
     }
@@ -181,7 +185,8 @@ export class IndexedDbStorage implements StorageService {
       id: newId(),
       project_id: projectId,
       title: input.title,
-      content: input.content,
+      translated_content: input.translated_content,
+      source_content: input.source_content ?? null,
       created_at: nowIso(),
       chapter_number: parseChapterNumber(input.title),
       summary: null,
@@ -292,8 +297,8 @@ export class IndexedDbStorage implements StorageService {
       id: newId(),
       project_id: projectId,
       source_lang: input.source_lang,
-      raw_text: input.raw_text,
-      output_text: input.output_text,
+      source_text: input.source_text,
+      translated_text: input.translated_text,
       model_used: input.model_used,
       created_at: nowIso(),
     };
@@ -323,16 +328,34 @@ export class IndexedDbStorage implements StorageService {
     const translation = await this.db.translations.get(tid);
     if (!translation) throw new Error("Translation not found");
     const glossary = await this.listGlossary(translation.project_id);
-    return findOccurrences(translation.output_text, glossary);
+    return findOccurrences(translation.translated_text, glossary);
+  }
+
+  // --- glossary extraction runs ---
+
+  async saveGlossaryExtractionRun(run: GlossaryExtractionRun): Promise<void> {
+    await this.db.glossary_extractions.where("[source+source_id]").equals([run.source, run.source_id]).delete();
+
+    await this.db.glossary_extractions.add(run);
+  }
+
+  async getGlossaryExtractionRun(
+    source: "translation" | "reference",
+    sourceId: string
+  ): Promise<GlossaryExtractionRun | null> {
+    const run = await this.db.glossary_extractions.where("[source+source_id]").equals([source, sourceId]).first();
+
+    return run ?? null;
   }
 
   // --- portability (JSON backup / restore / merge) ---
   async exportAll(): Promise<ExportBundle> {
-    const [projects, references, glossary, translations] = await Promise.all([
+    const [projects, references, glossary, translations, glossary_extractions] = await Promise.all([
       this.db.projects.toArray(),
       this.db.references.toArray(),
       this.db.glossary.toArray(),
       this.db.translations.toArray(),
+      this.db.glossary_extractions.toArray(),
     ]);
     return {
       format: "novelbridge-export",
@@ -342,6 +365,7 @@ export class IndexedDbStorage implements StorageService {
       references,
       glossary,
       translations,
+      glossary_extractions,
     };
   }
 
@@ -352,6 +376,7 @@ export class IndexedDbStorage implements StorageService {
     const references = bundle.references ?? [];
     const glossary = bundle.glossary ?? [];
     const translations = bundle.translations ?? [];
+    const glossary_extractions = bundle.glossary_extractions ?? [];
 
     await this.db.transaction(
       "rw",
@@ -359,6 +384,7 @@ export class IndexedDbStorage implements StorageService {
       this.db.references,
       this.db.glossary,
       this.db.translations,
+      this.db.glossary_extractions,
       async () => {
         if (mode === "replace") {
           await Promise.all([
@@ -366,12 +392,14 @@ export class IndexedDbStorage implements StorageService {
             this.db.references.clear(),
             this.db.glossary.clear(),
             this.db.translations.clear(),
+            this.db.glossary_extractions.clear(),
           ]);
         }
         // Upsert by id (bulkPut). Glossary dedupe-on-surface_form for merge is handled below.
         await this.db.projects.bulkPut(projects);
         await this.db.references.bulkPut(references);
         await this.db.translations.bulkPut(translations);
+        await this.db.glossary_extractions.bulkPut(glossary_extractions);
 
         if (mode === "replace") {
           await this.db.glossary.bulkPut(glossary);

@@ -28,7 +28,9 @@ export interface ReferenceChapter {
   id: string;
   project_id: string;
   title: string;
-  content: string;
+  // Added source_content
+  translated_content: string;
+  source_content: string | null;
   created_at: string;
   // Parsed from the title at upload (backend services/chapter_number.py). null when the
   // title has no recognizable number — the list falls back to upload order for those.
@@ -45,6 +47,7 @@ export interface ReferenceChapter {
 
 export type GlossaryStatus = "candidate" | "approved" | "rejected";
 export type GlossaryCategory = "character" | "title" | "term" | "location" | "organization" | "item";
+export type GlossaryExtractionSource = "reference" | "translation";
 export type Gender = "male" | "female" | "unknown";
 
 // English-first glossary entry (task 14). `surface_form` is the English name (always
@@ -61,12 +64,39 @@ export interface GlossaryEntry {
   created_at: string | null;
 }
 
+export interface GlossaryExtractionRun {
+  id: string;
+  project_id: string;
+  source: GlossaryExtractionSource;
+  source_id: string;
+  created_at: string;
+  // model: string;
+  // prompt_tokens: number;
+  // completion_tokens: number;
+  // duration_ms: number;
+  suggestions: GlossaryPairSuggestion[];
+}
+
+export interface GlossaryExtractionResult {
+  suggestions: GlossaryPairSuggestion[];
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  duration_ms: number;
+}
+
+export interface GlossaryExtractionContent {
+  source_text: string;
+  translated_text: string;
+  source_lang: SourceLang;
+}
+
 export interface Translation {
   id: string;
   project_id: string;
   source_lang: SourceLang;
-  raw_text: string;
-  output_text: string;
+  source_text: string;
+  translated_text: string;
   model_used: string;
   created_at: string;
 }
@@ -80,7 +110,9 @@ export interface ProjectCreate {
 
 export interface ReferenceCreate {
   title: string;
-  content: string;
+  // Added source_content
+  translated_content: string;
+  source_content?: string | null;
 }
 
 export interface GlossaryCreate {
@@ -144,7 +176,7 @@ export interface DetectNamesResponse {
 }
 
 export interface TranslateRequest {
-  raw_text: string;
+  source_text: string;
   source_lang: SourceLang;
   // Opt-in in-context term review. When true, the done event carries `matches`.
   review_terms?: boolean;

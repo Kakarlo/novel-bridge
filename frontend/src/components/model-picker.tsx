@@ -54,6 +54,15 @@ export function ModelPicker({ compact = false }: { compact?: boolean }) {
   const activeModelLabel = creds.model || current || "default";
   const activeProviderLabel = PROVIDERS.find((p) => p.id === activeProviderId)?.label ?? activeProviderId;
 
+  useEffect(() => {
+    const resolvedModel = creds.model || current;
+    if (resolvedModel && resolvedModel !== creds.activeModel) {
+      setCredentials({
+        activeModel: resolvedModel,
+      });
+    }
+  }, [creds.model, creds.activeModel, current]);
+
   // Warn on refresh/close while ANY provider has a key set (not just the active one) — the
   // key is memory-only, so a reload loses it. Routed through the shared unload guard so it
   // and the live-stream warning share one listener / one native prompt.

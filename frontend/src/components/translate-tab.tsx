@@ -253,7 +253,7 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
       }
       const stream = api.translateStream(
         projectId,
-        { raw_text: raw, source_lang: lang, ...(selection ? { selection } : {}), ...stateless },
+        { source_text: raw, source_lang: lang, ...(selection ? { selection } : {}), ...stateless },
         controller.signal
       );
       let acc = "";
@@ -278,9 +278,9 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
             try {
               const saved = await getStorage().saveTranslation(projectId, {
                 source_lang: lang,
-                raw_text: raw,
-                output_text: acc.trim(),
-                model_used: getCredentials().model || "unknown",
+                source_text: raw,
+                translated_text: acc.trim(),
+                model_used: getCredentials().activeModel  || "unknown",
               });
               savedId = saved.id;
             } catch {
@@ -328,8 +328,8 @@ export function TranslateTab({ projectId, defaultLang, hasReferences, onSaved }:
 
   function applyLoad(t: Translation) {
     abortRef.current?.abort();
-    setRaw(t.raw_text);
-    setOutput(t.output_text);
+    setRaw(t.source_text);
+    setOutput(t.translated_text);
     setLang(t.source_lang);
     setViewingId(t.id);
     setStatus("viewing");

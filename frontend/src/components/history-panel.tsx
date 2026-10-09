@@ -85,7 +85,7 @@ export function HistoryPanel({ projectId, refreshKey, activeId, onClose, onSelec
                       active ? "border-accent-brand/50 bg-accent-brand/10" : "border-transparent hover:bg-muted/60"
                     )}
                   >
-                    <p className="line-clamp-2 pr-7 text-sm leading-snug">{t.output_text || "(empty output)"}</p>
+                    <p className="line-clamp-2 pr-7 text-sm leading-snug">{t.translated_text || "(empty output)"}</p>
                     <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
                       <span className="rounded bg-muted px-1.5 py-0.5 font-medium">
                         {langLabel(t.source_lang)} → EN

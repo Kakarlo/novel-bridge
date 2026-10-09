@@ -35,6 +35,8 @@ export interface Credentials {
   provider: string;
   /** Model id within the provider. Empty = use that provider's default. */
   model: string;
+  /** Actual resolved model currently being used by the provider. */
+  activeModel: string;
   /** The ACTIVE provider's API key. Empty for local providers. Session-only. */
   apiKey: string;
   /** True if ANY provider has a key set this session (not just the active one). Drives the
@@ -66,7 +68,7 @@ function readInitial(): Credentials {
     /* ignore corrupt/unavailable storage */
   }
   // apiKey always starts empty — a refresh clears it (memory-only), by design.
-  return { provider, model, apiKey: "", anyKeySet: false, ollamaUrl };
+  return { provider, model, activeModel: "",apiKey: "", anyKeySet: false, ollamaUrl };
 }
 
 let state: Credentials = readInitial();
@@ -118,6 +120,7 @@ export function setCredentials(patch: Partial<Credentials>) {
   if (
     next.provider === state.provider &&
     next.model === state.model &&
+    next.activeModel === state.activeModel &&
     next.apiKey === state.apiKey &&
     next.anyKeySet === state.anyKeySet &&
     next.ollamaUrl === state.ollamaUrl

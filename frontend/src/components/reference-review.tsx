@@ -2,39 +2,22 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/api/client";
-import type { GlossaryExtractionContent, GlossaryPairSuggestion } from "@/api/types";
+import type { GlossaryExtractionContent, GlossaryPairSuggestion, ReferenceChapter, SourceLang } from "@/api/types";
 import { getStorage, getStorageBackend } from "@/storage";
 import { GlossaryPairReview } from "./glossary-pair-review";
 
-/**
- * Lightweight review surface for a SAVED translation (FRONTEND_TODO #1 + #3). Two groups
- * that both derive from the translation's source chapter:
- *
- *   • Source-language terms — zh/ja proper nouns from the source text (EXPERIMENTAL, gated by
- *     NB_SOURCE_TERMS). Copy a term to pair it with an English name in the Glossary tab.
- *   • Suggested source↔English pairs — LLM-paired suggestions binding each source term to the
- *     exact English spelling the translation actually used (replaces the old deterministic
- *     aligner, which produced unreliable pairs). This is an on-demand LLM call, so it runs
- *     only when the user clicks "Suggest pairs" — never automatically. "Confirm" writes the
- *     pair to the glossary (upsert on surface_form, defaults to approved); "dismiss" hides it.
- *
- * REMOVED
- * Source terms degrade silently (404 feature off / [] model unavailable → render nothing).
- * This only makes sense for a persisted translation (it has a source chapter on the server),
- * so the caller mounts it only when a translation_id exists — never during a live stream.
- */
-export function TranslationReview({
-  projectId,
-  translationId,
-  onGlossaryChanged,
-}: {
+interface ReferenceReviewProps {
   projectId: string;
-  translationId: string;
+  reference: ReferenceChapter;
+  sourceLang: SourceLang | null;
   onGlossaryChanged?: () => void;
-}) {
+}
+
+export function ReferenceReview({ projectId, reference, sourceLang, onGlossaryChanged }: ReferenceReviewProps) {
   const [pairs, setPairs] = useState<GlossaryPairSuggestion[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
+  const pairKey = (c: GlossaryPairSuggestion) => `${c.source_term}→${c.surface_form}`;
 
   useEffect(() => {
     let active = true;
@@ -42,7 +25,7 @@ export function TranslationReview({
     setExtracted(false);
 
     void getStorage()
-      .getGlossaryExtractionRun("translation", translationId)
+      .getGlossaryExtractionRun("reference", reference.id)
       .then((run) => {
         if (!active || !run) return;
 
@@ -55,36 +38,36 @@ export function TranslationReview({
     return () => {
       active = false;
     };
-  }, [translationId]);
-
-  const pairKey = (c: GlossaryPairSuggestion) => `${c.source_term}→${c.surface_form}`;
+  }, [reference.id]);
 
   async function suggestPairs() {
     setExtracting(true);
-    try {
-      // On-demand LLM call: pairs source terms to the English spellings in the translation.
-      // On the idb backend the server has no translation row, so ship the saved translation's
-      // texts in the body (stateless path, task 23.4c/d); the API backend omits them and the
-      // server loads by tid, unchanged.
-      let texts: GlossaryExtractionContent | undefined;
-      if (getStorageBackend() === "idb") {
-        const t = await getStorage().getTranslation(translationId);
-        texts = { source_text: t.source_text, translated_text: t.translated_text, source_lang: t.source_lang };
-      }
-      const result = await api.translationExtractGlossary(translationId, texts);
 
+    try {
+      let texts: GlossaryExtractionContent | undefined;
+
+      if (getStorageBackend() === "idb") {
+        texts = {
+          source_text: reference.source_content ?? "",
+          translated_text: reference.translated_content,
+          source_lang: sourceLang ?? "zh",
+        };
+      }
+
+      const result = await api.referenceExtractGlossary(reference.id, texts);
       setPairs(result);
       setExtracted(true);
-
       await getStorage().saveGlossaryExtractionRun({
         id: crypto.randomUUID(),
         project_id: projectId,
-        source: "translation",
-        source_id: translationId,
+        source: "reference",
+        source_id: reference.id,
         created_at: new Date().toISOString(),
         suggestions: result,
       });
-      if (result.length === 0) toast.info("No new pairings found");
+      if (result.length === 0) {
+        toast.info("No new pairings found");
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Could not extract glossary pairs");
     } finally {
@@ -113,8 +96,8 @@ export function TranslationReview({
       await getStorage().saveGlossaryExtractionRun({
         id: crypto.randomUUID(),
         project_id: projectId,
-        source: "translation",
-        source_id: translationId,
+        source: "reference",
+        source_id: reference.id,
         created_at: new Date().toISOString(),
         suggestions: updated,
       });
@@ -133,23 +116,20 @@ export function TranslationReview({
     await getStorage().saveGlossaryExtractionRun({
       id: crypto.randomUUID(),
       project_id: projectId,
-      source: "translation",
-      source_id: translationId,
+      source: "reference",
+      source_id: reference.id,
       created_at: new Date().toISOString(),
       suggestions: updated,
     });
   }
 
-  // Cap the whole surface and scroll inside it, so the review never swallows the reading
-  // pane even with both groups expanded; the groups themselves are collapsible to reclaim
-  // space entirely.
   return (
-    <section className="pane-scroll max-h-[40%] shrink-0 space-y-3 overflow-y-auto border-b bg-muted/20 px-6 py-4">
+    <section className="mb-4 max-h-38 overflow-y-auto rounded-lg border bg-muted/20 p-4">
       <GlossaryPairReview
         pairs={pairs}
         extracting={extracting}
         extracted={extracted}
-        hint="paired by the model from the source and its translation — confirm to add a glossary pairing, or dismiss"
+        hint="paired by the model from the reference source chapter and its English translation — confirm to add a glossary pairing, or dismiss"
         onExtract={suggestPairs}
         onConfirm={confirmPair}
         onDismiss={dismissPair}

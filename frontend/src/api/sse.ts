@@ -1,7 +1,7 @@
 // SSE consumer for POST endpoints with a JSON body.
 //
 // The browser-native EventSource only supports GET with no body, but the
-// translate endpoint is a POST that takes { raw_text, source_lang }. So we
+// translate endpoint is a POST that takes { source_text, source_lang }. So we
 // use fetch() with a streaming reader and parse the text/event-stream frames
 // ("data: {...}\n\n") ourselves, yielding each parsed JSON payload.
 

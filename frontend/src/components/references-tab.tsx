@@ -1,20 +1,32 @@
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Pencil,
+  Plus,
+  ScanSearch,
+  Sparkles,
+  Trash2,
+  Wand2,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Pencil, Plus, ScanSearch, Sparkles, Trash2, Wand2, X } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import type { Project, ReferenceChapter } from "@/api/types";
-import { getStorage, getStorageBackend } from "@/storage";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getStorage, getStorageBackend } from "@/storage";
+import { ReferenceReview } from "./reference-review";
 
 export function ReferencesTab({
   projectId,
@@ -106,6 +118,7 @@ export function ReferencesTab({
     return (
       <ReferenceReader
         projectId={projectId}
+        sourceLang={sourceLang}
         reference={selected}
         onGlossaryChanged={onGlossaryChanged}
         onBack={() => setSelectedId(null)}
@@ -124,8 +137,8 @@ export function ReferencesTab({
         <div>
           <h2 className="font-heading text-xl font-semibold tracking-tight">Reference chapters</h2>
           <p className="text-sm text-muted-foreground">
-            Paste previously translated chapters. Extract a style profile from them to keep the translation's voice
-            consistent.
+            Add a translated reference chapter. Optionally include the original source chapter to enable future glossary
+            pairing and source-term extraction.
           </p>
         </div>
         <Button onClick={() => setComposing(true)} data-icon="inline-start">
@@ -167,10 +180,13 @@ export function ReferencesTab({
                     <ChapterMarker chapter={ref.chapter_number} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{ref.title}</div>
-                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{ref.content}</p>
+                      <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{ref.translated_content}</p>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
                         {ref.chapter_number == null && <span className="italic">No chapter number</span>}
-                        <span>{ref.content.length.toLocaleString()} chars</span>
+                        <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">
+                          {ref.source_content ? "EN + RAW" : "EN"}
+                        </Badge>
+                        <span>{(ref.translated_content ?? "").length.toLocaleString()} chars</span>
                         <span>·</span>
                         <span>{formatDate(ref.created_at)}</span>
                         {ref.detected_names.length > 0 && (
@@ -257,6 +273,8 @@ function StyleProfilePanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pendingClear, setPendingClear] = useState(false);
 
   async function extract() {
     setExtracting(true);
@@ -267,10 +285,15 @@ function StyleProfilePanel({
       // Sending content works on BOTH backends (the API server analyzes the given text), so one
       // code path covers both.
       const newest = newestReference(references);
-      const { style_profile } = await api.extractProjectStyle(projectId, newest?.content, sourceLang);
+      const { style_profile } = await api.extractProjectStyle(
+        projectId,
+        newest?.translated_content ?? undefined,
+        sourceLang
+      );
       // Persist through the active store (server-side on the API backend; local on idb).
       const project = await getStorage().updateProjectStyle(projectId, style_profile);
       onChanged(project);
+      setOpen(true);
       toast.success("Style profile extracted");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Style extraction failed");
@@ -332,12 +355,30 @@ function StyleProfilePanel({
 
   return (
     <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-          <Wand2 className="size-3.5" />
-          Writing style
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/50"
+        >
+          {open ? (
+            <ChevronDown className="size-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-4 text-muted-foreground" />
+          )}
+
+          <div className="flex items-center gap-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+            <Wand2 className="size-3.5" />
+            Writing Style
+            {styleProfile && (
+              <span className="normal-case tracking-normal text-muted-foreground/70">
+                {styleProfile.split(/\s+/).length} words
+              </span>
+            )}
+          </div>
+        </button>
+
+        <div className="flex items-center gap-1.5">
           <Button
             size="xs"
             variant="outline"
@@ -349,10 +390,12 @@ function StyleProfilePanel({
             <Sparkles className={cn(extracting && "animate-pulse")} />
             {extracting ? "Extracting…" : styleProfile ? "Re-extract" : "Extract style"}
           </Button>
+
           <Button
             size="xs"
             variant="ghost"
             onClick={() => {
+              setOpen(true);
               setDraft(styleProfile ?? "");
               setEditing(true);
             }}
@@ -361,22 +404,61 @@ function StyleProfilePanel({
             <Pencil />
             {styleProfile ? "Edit" : "Write by hand"}
           </Button>
+
           {styleProfile && (
-            <Button size="xs" variant="ghost" onClick={clear} className="text-muted-foreground hover:text-destructive">
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setPendingClear(true)}
+              className="text-muted-foreground hover:text-destructive"
+            >
               Clear
             </Button>
           )}
         </div>
       </div>
 
-      {styleProfile ? (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{styleProfile}</p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          No style profile yet. Extract one from a reference chapter (or write one by hand) and it steers the voice of
-          every translation.
-        </p>
+      {!open && (
+        <div className="text-sm text-muted-foreground">
+          {styleProfile ? (
+            <>
+              Style profile extracted and active for translations.
+              <span className="ml-2 text-xs">
+                {references.length} reference{references.length === 1 ? "" : "s"}
+              </span>
+            </>
+          ) : (
+            "No style profile yet. Extract one from a reference chapter or write one manually."
+          )}
+        </div>
       )}
+
+      {open && (
+        <>
+          {styleProfile ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{styleProfile}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No style profile yet. Extract one from a reference chapter (or write one by hand) and it steers the voice
+              of every translation.
+            </p>
+          )}
+        </>
+      )}
+      <ConfirmDialog
+        open={pendingClear}
+        onOpenChange={setPendingClear}
+        title="Clear writing style?"
+        description={
+          <>
+            The extracted style profile will be removed and future translations will no longer receive writing-style
+            guidance.
+          </>
+        }
+        confirmLabel="Clear"
+        destructive
+        onConfirm={clear}
+      />
     </section>
   );
 }
@@ -407,15 +489,17 @@ function ReferenceComposer({
   onAdded: (ref: ReferenceChapter) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const [translatedContent, setTranslatedContent] = useState("");
+  const [sourceContent, setSourceContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState(false);
 
   const titleEmpty = !title.trim();
-  const contentEmpty = !content.trim();
-  const invalid = titleEmpty || contentEmpty;
+  const translatedEmpty = !translatedContent.trim();
 
-  async function submit(e: React.FormEvent) {
+  const invalid = titleEmpty || translatedEmpty;
+
+  async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setTouched(true);
     if (invalid) return;
@@ -425,7 +509,8 @@ function ReferenceComposer({
       // the style profile is extracted separately (deliberate action, not on every add).
       const ref = await getStorage().addReference(projectId, {
         title: title.trim(),
-        content: content.trim(),
+        translated_content: translatedContent.trim(),
+        source_content: sourceContent.trim() || null,
       });
       toast.success("Reference added");
       onAdded(ref);
@@ -460,21 +545,39 @@ function ReferenceComposer({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col space-y-1.5">
-          <Label htmlFor="ref-content">Translated text</Label>
+          <Label htmlFor="ref-content">Translated reference</Label>
           <Textarea
             id="ref-content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            value={translatedContent}
+            onChange={(e) => setTranslatedContent(e.target.value)}
             placeholder="Paste the full English translation of this chapter…"
-            aria-invalid={touched && contentEmpty}
+            aria-invalid={touched && translatedEmpty}
             className={cn("min-h-0 flex-1 resize-none font-sans text-[0.95rem] leading-relaxed")}
           />
           <div className="flex items-center justify-between">
-            {touched && contentEmpty ? (
-              <p className="text-xs text-destructive">Reference content can’t be empty.</p>
+            {touched && translatedEmpty ? (
+              <p className="text-xs text-destructive">A translated reference chapter is required.</p>
             ) : (
-              <span className="text-[11px] text-muted-foreground">{content.length.toLocaleString()} characters</span>
+              <span className="text-[11px] text-muted-foreground">
+                {translatedContent.length.toLocaleString()} characters
+              </span>
             )}
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col space-y-1.5">
+          <Label htmlFor="ref-content">Source chapter</Label>
+          <Textarea
+            id="ref-content"
+            value={sourceContent}
+            onChange={(e) => setSourceContent(e.target.value)}
+            placeholder="Paste the original chapter…"
+            className={cn("min-h-0 flex-1 resize-none font-sans text-[0.95rem] leading-relaxed")}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">
+              {sourceContent.length.toLocaleString()} characters
+            </span>
           </div>
         </div>
       </div>
@@ -493,6 +596,7 @@ function ReferenceComposer({
 
 function ReferenceReader({
   projectId,
+  sourceLang,
   reference,
   onGlossaryChanged,
   onBack,
@@ -503,6 +607,7 @@ function ReferenceReader({
   onConfirmDelete,
 }: {
   projectId: string;
+  sourceLang: Project["source_lang"];
   reference: ReferenceChapter;
   onGlossaryChanged?: () => void;
   onBack: () => void;
@@ -513,6 +618,7 @@ function ReferenceReader({
   onConfirmDelete: (r: ReferenceChapter) => Promise<void>;
 }) {
   const [redetecting, setRedetecting] = useState(false);
+  const [showSource, setShowSource] = useState(false);
 
   async function redetect() {
     try {
@@ -523,7 +629,7 @@ function ReferenceReader({
         // locally. Replicate the backend's glossary cross-check so already-resolved names
         // (promoted/rejected into the glossary) don't resurface as chips.
         const [{ detected_names }, glossary] = await Promise.all([
-          api.detectNames(reference.content),
+          api.detectNames(reference.translated_content ?? ""),
           getStorage().listGlossary(projectId),
         ]);
         const inGlossary = new Set(glossary.map((e) => e.surface_form.toLowerCase()));
@@ -559,6 +665,11 @@ function ReferenceReader({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {reference.source_content && (
+            <Button variant="outline" size="sm" onClick={() => setShowSource((v) => !v)}>
+              {showSource ? "Hide source" : "Show source"}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={redetect} disabled={redetecting} data-icon="inline-start">
             <ScanSearch className={cn(redetecting && "animate-pulse")} />
             {redetecting ? "Redetecting…" : "Redetect names"}
@@ -571,14 +682,24 @@ function ReferenceReader({
       </div>
       <ScrollArea className="min-h-0 flex-1">
         {/* Wide reading column for desktop (~75-80% of available width). */}
-        <div className="mx-auto w-[78%] min-w-0 max-w-5xl px-6 py-8">
+        <div className="mx-auto w-full max-w-4xl px-8 py-8">
           <DetectedNames
             projectId={projectId}
             reference={reference}
             onGlossaryChanged={onGlossaryChanged}
             onReferenceUpdated={onUpdated}
           />
-          <article className="chapter-content whitespace-pre-wrap">{reference.content}</article>
+          {reference.source_content && (
+            <ReferenceReview
+              projectId={projectId}
+              reference={reference}
+              sourceLang={sourceLang}
+              onGlossaryChanged={onGlossaryChanged}
+            />
+          )}
+          <article className="chapter-content whitespace-pre-wrap">
+            {showSource ? reference.source_content : reference.translated_content}
+          </article>
         </div>
       </ScrollArea>
 
@@ -623,6 +744,7 @@ function DetectedNames({
   onReferenceUpdated: (ref: ReferenceChapter) => void;
 }) {
   const [inGlossary, setInGlossary] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -673,39 +795,52 @@ function DetectedNames({
   const reject = (term: string) => resolve(term, "rejected");
 
   return (
-    <section className="mb-6 space-y-2 rounded-lg border bg-muted/20 p-4">
-      <div className="text-xs font-medium text-foreground">
-        Detected names
-        <span className="ml-1.5 font-normal text-muted-foreground">
-          — proper nouns found by the offline detector; click to add to the glossary
-        </span>
-      </div>
-      <ul className="flex flex-wrap gap-1.5">
-        {detected.map((term) => (
-          <li key={term}>
-            <span className="inline-flex h-7 items-center overflow-hidden rounded-md border bg-background">
-              <button
-                type="button"
-                onClick={() => promote(term)}
-                title="Add to glossary"
-                className="inline-flex h-full items-center gap-1 px-2 text-sm font-normal transition-colors hover:bg-muted"
-              >
-                {term}
-                <Plus className="size-3 opacity-70" />
-              </button>
-              <button
-                type="button"
-                onClick={() => reject(term)}
-                aria-label={`Reject ${term}`}
-                title="Reject (soft-delete; restore from the Glossary tab)"
-                className="inline-flex h-full items-center border-l px-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          </li>
-        ))}
-      </ul>
+    <section className="mb-4 space-y-2 rounded-lg border bg-muted/20 p-3">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground"
+      >
+        {collapsed ? (
+          <ChevronRight className="size-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="size-4 text-muted-foreground" />
+        )}
+
+        <span className="text-xs font-medium text-foreground">Detected names</span>
+
+        <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+          {detected.length}
+        </Badge>
+      </button>
+      {!collapsed && (
+        <ul className="flex flex-wrap gap-1.5">
+          {detected.map((term) => (
+            <li key={term}>
+              <span className="inline-flex h-7 items-center overflow-hidden rounded-md border bg-background">
+                <button
+                  type="button"
+                  onClick={() => promote(term)}
+                  title="Add to glossary"
+                  className="inline-flex h-full items-center gap-1 px-2 text-sm font-normal transition-colors hover:bg-muted"
+                >
+                  {term}
+                  <Plus className="size-3 opacity-70" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => reject(term)}
+                  aria-label={`Reject ${term}`}
+                  title="Reject (soft-delete; restore from the Glossary tab)"
+                  className="inline-flex h-full items-center border-l px-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

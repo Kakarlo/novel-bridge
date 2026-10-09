@@ -22,6 +22,7 @@ import type {
   TranslateEvent,
   TranslateRequest,
   Translation,
+  GlossaryExtractionContent,
 } from "./types";
 
 const BASE = "/api";
@@ -227,13 +228,23 @@ export const api = {
   // Stateless (task 23.4c): pass `texts` to ship the source + output in the body (the idb
   // backend owns the saved translation, so the server reads nothing by `tid`); omit it and the
   // server loads the translation by `tid` (API backend, unchanged).
-  translationExtractGlossary: (
-    tid: string,
-    texts?: { raw_text: string; output_text: string; source_lang: SourceLang }
-  ) => {
+  translationExtractGlossary: (tid: string, texts?: GlossaryExtractionContent) => {
     const selection = engineSelection();
     const payload = { ...(selection ? { selection } : {}), ...(texts ?? {}) };
     return request<GlossaryPairSuggestion[]>(`/translations/${tid}/extract-glossary`, {
+      method: "POST",
+      headers: authHeader(),
+      body: Object.keys(payload).length ? JSON.stringify(payload) : undefined,
+    });
+  },
+  // LLM-paired glossary extraction from a reference chapter.
+  // Mirrors translationExtractGlossary but operates on a reference resource.
+  // The API backend may load by refId; the idb path may provide the texts
+  // statelessly in the request body.
+  referenceExtractGlossary: (refId: string, texts?: GlossaryExtractionContent) => {
+    const selection = engineSelection();
+    const payload = { ...(selection ? { selection } : {}), ...(texts ?? {}) };
+    return request<GlossaryPairSuggestion[]>(`/references/${refId}/extract-glossary`, {
       method: "POST",
       headers: authHeader(),
       body: Object.keys(payload).length ? JSON.stringify(payload) : undefined,

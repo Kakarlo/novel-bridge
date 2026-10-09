@@ -17,6 +17,7 @@
 import type {
   GlossaryCreate,
   GlossaryEntry,
+  GlossaryExtractionRun,
   GlossaryStatus,
   GlossaryUpdate,
   Project,
@@ -32,8 +33,8 @@ import type {
 // to the client). id/created_at are assigned by the store.
 export interface SaveTranslationInput {
   source_lang: Translation["source_lang"];
-  raw_text: string;
-  output_text: string;
+  source_text: string;
+  translated_text: string;
   model_used: string;
 }
 
@@ -47,6 +48,7 @@ export interface ExportBundle {
   references: ReferenceChapter[];
   glossary: GlossaryEntry[];
   translations: Translation[];
+  glossary_extractions: GlossaryExtractionRun[];
 }
 
 export interface StorageService {
@@ -91,6 +93,13 @@ export interface StorageService {
   // The API backend recomputes server-side (GET /translations/{tid}/matches); the IndexedDB
   // backend computes locally with findOccurrences (task 23.4d — no server row exists on idb).
   getTranslationMatches(tid: string): Promise<TermMatch[]>;
+
+  // --- glossary extraction runs ---
+  saveGlossaryExtractionRun(run: GlossaryExtractionRun): Promise<void>;
+  getGlossaryExtractionRun(
+    source: "translation" | "reference",
+    sourceId: string
+  ): Promise<GlossaryExtractionRun | null>;
 
   // --- portability (JSON backup / restore / merge) ---
   exportAll(): Promise<ExportBundle>;

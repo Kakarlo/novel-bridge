@@ -15,7 +15,7 @@ PORT="${PORT:-8000}"
 
 if [ ! -x "$PYTHON" ]; then
   echo "venv not found at $PYTHON. Create it first:" >&2
-  echo "  python -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt" >&2
+  echo "  python -m venv .venv && ./.venv/bin/python -m pip install -r requirements-dev.txt" >&2
   exit 1
 fi
 

@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $python)) {
-    Write-Error "venv not found at $python. Create it first: python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt"
+    Write-Error "venv not found at $python. Create it first: python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt"
 }
 
 if ($Mock) {

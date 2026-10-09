@@ -16,45 +16,45 @@
 # For Elastic Beanstalk the image is built by EB from this file; environment variables
 # are set via the EB console or .ebextensions/ (see deploy/ docs).
 
-FROM python:3.13-slim
+# 1. Pin to a specific minor patch version for supply-chain security
+FROM python:3.13.1-slim
 
-WORKDIR /app
+# 2. Setup environment optimizations
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/app/.local/bin:${PATH}"
 
-# --- system deps (spaCy needs a C compiler for its Cython extensions) -------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# 3. Securely create the system user first
+RUN groupadd --system app \
+    && useradd --system \
+        --gid app \
+        --create-home \
+        --home-dir /home/app \
+        app
 
-# --- Python deps ------------------------------------------------------------
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 4. Set workdir and establish safe user ownership early
+WORKDIR /home/app/workspace
+RUN chown app:app /home/app/workspace
 
-# --- spaCy English NER model (en_core_web_sm, ~12 MB) ----------------------
-# Needed for POST /api/detect-names and POST /references/{id}/redetect.
-# The zh/ja models are not installed here (kept off via NB_SOURCE_TERMS=false).
+# 5. Drop down to the non-root user immediately for all installations
+USER app
+
+# 6. Install dependencies into the user's local space
+COPY --chown=app:app requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# 7. Download spaCy model securely as the non-root user
 RUN python -m spacy download en_core_web_sm
 
-# --- Application source -----------------------------------------------------
-COPY app/ app/
+# 8. Copy application source with strict permissions
+COPY --chown=app:app app/ app/
 
-# --- Runtime config ---------------------------------------------------------
-# Defaults safe for a stateless hosted deployment (NB_STORAGE_BACKEND not needed
-# here — storage choice is a frontend build-time variable). Override via EB env vars.
+# 9. Minimal runtime environment fallback configurations.
 ENV NB_ENGINE=mock \
-    OLLAMA_BASE_URL=http://localhost:11434 \
-    OLLAMA_MODEL=qwen3.5:0.8b \
-    OLLAMA_NUM_CTX=16384 \
-    OLLAMA_NUM_THREAD=2 \
-    OLLAMA_THINK=false \
-    NB_CONTEXT_BUDGET_TOKENS=12000 \
-    NB_MAX_CONCURRENT_TRANSLATIONS=3 \
-    NB_QUEUE_TIMEOUT_SECONDS=30 \
-    NB_DB_PATH=/tmp/novelbridge.db \
-    NB_CORS_ORIGINS=http://localhost:5173 \
-    NB_SOURCE_TERMS=false \
-    NB_PRONOUN_CHECK=false
+    NB_DB_PATH=/home/app/novelbridge.db
 
 EXPOSE 8000
 
-# Uvicorn bound to 0.0.0.0 so the container port is reachable from EB's proxy.
+# 10. Run via Uvicorn safely bound to port
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+

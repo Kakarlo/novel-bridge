@@ -2,7 +2,7 @@
 
 This guide covers deploying NovelBridge to AWS using free-tier eligible services:
 
-- **Backend (FastAPI)** → AWS Elastic Beanstalk (EC2 `t2.micro`, free tier for 12 months)
+- **Backend (FastAPI)** → AWS Elastic Beanstalk (EC2 `t3.micro`)
 - **Frontend (Vite static build)** → Amazon S3 + CloudFront (free tier eligible)
 
 The hosted app uses the **local-first (IndexedDB) storage** backend — no user data is written
@@ -52,10 +52,10 @@ cd backend/
 # Initialise a new EB application (choose Docker platform, your region)
 eb init novelbridge-backend --platform docker --region us-east-1
 
-# Create the environment (t2.micro = free tier)
+# Create the environment (t3.micro = free tier)
 eb create novelbridge-production \
-  --instance-type t2.micro \
-  --single-instance          # no load balancer = cheaper for low traffic
+  --instance-type t3.micro \
+  --single          # no load balancer = cheaper for low traffic
 ```
 
 ### 1.2 Set environment variables
@@ -67,8 +67,8 @@ Software → Environment properties, set:
 |-----|-------|-------|
 | `NB_ENGINE` | `mock` | Start with mock; switch once tested |
 | `NB_CORS_ORIGINS` | `https://your-cloudfront-domain.cloudfront.net` | Set after step 2.3 |
-| `NB_MAX_CONCURRENT_TRANSLATIONS` | `3` | t2.micro is 1 vCPU; 3 is a safe cap |
-| `NB_DB_PATH` | `/tmp/novelbridge.db` | Ephemeral; only used by the api-storage path |
+| `NB_MAX_CONCURRENT_TRANSLATIONS` | `3` | t3.micro provides 2 vCPUs; 3 is a conservative cap for low-traffic workloads |
+| `NB_DB_PATH` | `/home/app/novelbridge.db` | Ephemeral; only used by the api-storage path |
 | `NB_SOURCE_TERMS` | `false` | Requires zh/ja spaCy models; leave off |
 | `NB_PRONOUN_CHECK` | `false` | Off by default |
 
@@ -102,8 +102,8 @@ eb deploy
 ```
 
 EB builds the Docker image from `Dockerfile`, pushes it, and replaces the running
-container. First deploy takes ~5 minutes (spaCy model download). Subsequent deploys are
-faster (layer cache).
+container. First deploy may take several minutes because the Docker image installs
+Python dependencies and downloads the spaCy model during the build.
 
 ### 1.4 Verify
 
@@ -167,8 +167,9 @@ aws s3 sync frontend/dist/ s3://$BUCKET --delete
 
 ### 2.4 Create a CloudFront distribution (recommended setup)
 
-This puts CloudFront in front of both S3 and EB so the frontend and API share the same
-domain (no CORS headers needed, no `VITE_API_BASE_URL`).
+Using a single CloudFront domain avoids cross-origin browser requests
+between the frontend and API. Keep NB_CORS_ORIGINS set to your
+CloudFront domain so FastAPI can validate requests correctly.
 
 In the AWS Console → CloudFront → Create distribution:
 
@@ -260,13 +261,14 @@ If Ollama runs on another machine on your network (e.g. a home server):
 
 | Service | Free tier | Typical usage |
 |---------|-----------|---------------|
-| EC2 `t2.micro` | 750 hrs/month | ~$0 for 12 months |
+| EC2 `t3.micro` | 750 hrs/month | ~$0 for 12 months |
 | S3 storage | 5 GB | ~$0 for a small static build |
 | CloudFront | 1 TB egress, 10M requests | ~$0 for low traffic |
 | Data transfer | 1 GB out free | ~$0 |
 
-After 12 months, a `t2.micro` is ~$8/month. A `t3a.nano` (~$3.50/month) is enough for
-a stateless compute backend at low traffic. A Spot Instance reduces cost further.
+After 12 months, a `t3.micro` typically costs several dollars per month,
+depending on region and usage. A `t3a.nano` may be sufficient for a
+low-traffic stateless backend if costs become a concern.
 
 ---
 

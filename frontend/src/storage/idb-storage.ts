@@ -146,6 +146,7 @@ export class IndexedDbStorage implements StorageService {
       this.db.references,
       this.db.glossary,
       this.db.translations,
+      this.db.glossary_extractions,
       async () => {
         await this.db.projects.delete(id);
         await this.db.references.where("project_id").equals(id).delete();

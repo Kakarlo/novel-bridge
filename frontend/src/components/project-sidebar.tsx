@@ -1,5 +1,5 @@
 import { BookMarked, ChevronLeft, ChevronRight, Moon, Plus, Sun, Trash2, Pencil } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { Project, ProjectCreate, SourceLang } from "@/api/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -49,6 +49,10 @@ export function ProjectSidebar({
     return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
   });
   const isExpanded = !collapsed;
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
+  }, [collapsed]);
 
   async function submitNew(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -217,7 +221,12 @@ export function ProjectSidebar({
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <p className="px-2 py-8 text-center text-sm text-muted-foreground">
+          <p
+            className={cn(
+              "px-2 py-8 text-center text-sm text-muted-foreground",
+              isExpanded ? "opacity-100" : "opacity-0"
+            )}
+          >
             No series yet. Create one to start building its glossary and references.
           </p>
         ) : (

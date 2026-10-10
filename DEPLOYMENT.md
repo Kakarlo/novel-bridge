@@ -214,7 +214,176 @@ https://d1234abcdef.cloudfront.net/api/health → {"status":"ok",...}
 
 ---
 
-## Part 3 — Connecting a local Ollama to the hosted app
+## Part 3 - Restrict Backend Access to CloudFront Only (Optional Hardening)
+
+By default, the Elastic Beanstalk endpoint remains publicly reachable even after placing CloudFront in front of it. For a stateless NovelBridge deployment where all traffic should flow through CloudFront, you can restrict inbound access so that only CloudFront origin servers can reach the backend.
+
+This reduces the attack surface and prevents users from bypassing CloudFront and accessing the Elastic Beanstalk URL directly.
+
+### 3.1 Find the CloudFront Managed Prefix List
+
+AWS maintains a managed prefix list containing the IP ranges used by CloudFront origin-facing servers.
+
+1. Open **AWS Console → VPC**.
+2. In the left navigation pane, select **Managed Prefix Lists**.
+3. Search for:
+
+   ```text
+   cloudfront
+   ```
+
+4. Locate:
+
+   ```text
+   com.amazonaws.global.cloudfront.origin-facing
+   ```
+
+5. Copy the **Prefix List ID**.
+
+   Example:
+
+   ```text
+   pl-xxxxxxxx
+   ```
+
+---
+
+### 3.2 Locate the Elastic Beanstalk Security Group
+
+NovelBridge uses a **Single Instance** Elastic Beanstalk environment, so the security group is attached directly to the EC2 instance.
+
+1. Open **AWS Console → Elastic Beanstalk**.
+2. Select your environment:
+
+   ```text
+   novelbridge-production
+   ```
+
+3. Open **Configuration**.
+4. Locate the assigned **Security Group**.
+
+Alternatively:
+
+1. Open **AWS Console → EC2**.
+2. Select **Instances**.
+3. Open the Elastic Beanstalk instance.
+4. Click the linked Security Group.
+
+---
+
+### 3.3 Replace Public Access with CloudFront Access
+
+#### Remove Public Inbound Rules
+
+Open the Security Group and navigate to:
+
+```text
+Inbound rules → Edit inbound rules
+```
+
+Remove any rules such as:
+
+```text
+HTTP  (80)  Source: 0.0.0.0/0
+```
+
+```text
+HTTPS (443) Source: 0.0.0.0/0
+```
+
+```text
+HTTP  (80)  Source: ::/0
+```
+
+```text
+HTTPS (443) Source: ::/0
+```
+
+These allow direct access from the public Internet.
+
+#### Add CloudFront-Only Rule
+
+Create a new inbound rule.
+
+For HTTP origins:
+
+```text
+Type: HTTP
+Port: 80
+Source: Prefix List
+Value: com.amazonaws.global.cloudfront.origin-facing
+```
+
+or use the Prefix List ID copied earlier:
+
+```text
+pl-xxxxxxxx
+```
+
+If your origin uses HTTPS instead:
+
+```text
+Type: HTTPS
+Port: 443
+Source: Prefix List
+Value: com.amazonaws.global.cloudfront.origin-facing
+```
+
+Save the rule.
+
+---
+
+### 3.4 Verify
+
+Test the application through CloudFront:
+
+```text
+https://<cloudfront-domain>
+```
+
+```text
+https://<cloudfront-domain>/api/health
+```
+
+These requests should continue working normally.
+
+Then test the Elastic Beanstalk URL directly:
+
+```text
+http://<your-eb-domain>.elasticbeanstalk.com/api/health
+```
+
+The request should no longer be reachable from the public Internet.
+
+---
+
+### Notes
+
+- This hardening step is optional but recommended for production deployments.
+- AWS automatically maintains the CloudFront managed prefix list, so future CloudFront IP changes do not require manual updates.
+- If CloudFront is later removed from the architecture, the security group must be updated to restore public access.
+- This approach works well with NovelBridge's architecture because all user traffic is intended to flow through CloudFront.
+
+#### Alternative: Secret Header Validation
+
+Another approach is to configure CloudFront to add a secret custom header and validate it within FastAPI middleware.
+
+Example:
+
+```text
+CloudFront
+  X-Origin-Verify: <secret-value>
+```
+
+Requests that do not contain the expected header can be rejected with:
+
+```http
+403 Forbidden
+```
+
+This provides application-layer protection and can be combined with the CloudFront prefix-list method for additional defense in depth.
+
+## Part 4 — Connecting a local Ollama to the hosted app
 
 Users of the hosted app can translate with their own local Ollama (running on their
 machine or LAN). No tunnels needed — the browser makes the request directly.
@@ -254,6 +423,10 @@ If Ollama runs on another machine on your network (e.g. a home server):
 > **Security note:** exposing Ollama on `0.0.0.0` makes it reachable by anyone on your
 > LAN. Do not expose port 11434 to the public internet. Use a firewall rule to restrict
 > it to your LAN subnet.
+
+```bash
+ssh -L 11434:localhost:11434 user@address
+```
 
 ---
 
